@@ -566,3 +566,393 @@ def archive_draft(project_path: Path, draft_path: Path, issue_number: int) -> Pa
     draft_path.unlink()
 
     return cache_file
+
+
+# =============================================================================
+# Clarification Support Functions
+# =============================================================================
+
+# Categories for ambiguity scanning
+CLARIFICATION_CATEGORIES = {
+    "functional_scope": {
+        "name": "Functional Scope & Behavior",
+        "checks": ["Core user goals", "Success criteria", "Out-of-scope declarations"],
+    },
+    "domain_data": {
+        "name": "Domain & Data Model",
+        "checks": ["Entities/attributes", "Relationships", "Lifecycle/states"],
+    },
+    "non_functional": {
+        "name": "Non-Functional Quality",
+        "checks": ["Performance targets", "Scalability", "Security requirements"],
+    },
+    "edge_cases": {
+        "name": "Edge Cases & Failures",
+        "checks": ["Negative scenarios", "Error handling", "Recovery flows"],
+    },
+    "terminology": {
+        "name": "Terminology & Consistency",
+        "checks": ["Defined terms", "Ambiguous language", "Vague adjectives"],
+    },
+}
+
+# Vague terms that should be quantified
+VAGUE_TERMS = [
+    "fast", "quick", "slow", "scalable", "secure", "robust", "intuitive",
+    "flexible", "efficient", "reliable", "high-performance", "low-latency",
+    "user-friendly", "easy", "simple", "complex", "many", "few", "large",
+    "small", "often", "sometimes", "rarely", "soon", "later",
+]
+
+
+def scan_draft_for_ambiguities(draft_path: Path) -> dict[str, Any]:
+    """Scan a draft for underspecified areas.
+
+    Args:
+        draft_path: Path to draft file
+
+    Returns:
+        Dict with category statuses and candidate questions
+    """
+    parsed = parse_draft(draft_path)
+    sections = parsed["sections"]
+    body = parsed["body"]
+    body_lower = body.lower()
+
+    results = {}
+
+    for cat_id, cat_info in CLARIFICATION_CATEGORIES.items():
+        status = "clear"
+        issues = []
+
+        if cat_id == "terminology":
+            # Check for vague adjectives
+            for term in VAGUE_TERMS:
+                if term in body_lower:
+                    # Find context around the term
+                    pattern = rf"\b{re.escape(term)}\b"
+                    matches = list(re.finditer(pattern, body, re.IGNORECASE))
+                    if matches:
+                        issues.append(f"Vague term '{term}' lacks measurable criteria")
+                        status = "partial"
+
+        elif cat_id == "edge_cases":
+            # Check for error handling coverage
+            error_keywords = ["error", "fail", "exception", "invalid", "timeout"]
+            has_error_handling = any(kw in body_lower for kw in error_keywords)
+            if not has_error_handling:
+                issues.append("No error scenarios defined")
+                status = "missing"
+
+        elif cat_id == "non_functional":
+            # Check for quantified NFRs
+            nfr_section = sections.get("Non-Functional Requirements", "")
+            if not nfr_section or "[Performance" in nfr_section or "[Security" in nfr_section:
+                issues.append("Non-functional requirements need specific targets")
+                status = "partial" if nfr_section else "missing"
+
+    # Check for placeholder markers
+    if "[NEEDS CLARIFICATION]" in body:
+        issues.append("Contains explicit clarification markers")
+        status = "missing"
+    if "[Requirement" in body or "[Criterion" in body:
+        issues.append("Contains placeholder requirements or criteria")
+        status = "partial"
+
+    # Check for unresolved questions
+    if "Open Questions" in sections:
+        questions_section = sections["Open Questions"]
+        unchecked = len(re.findall(r"^\s*-\s*\[\s*\]", questions_section, re.MULTILINE))
+        if unchecked > 0:
+            issues.append(f"{unchecked} open question(s) need resolution")
+            status = "partial"
+
+    results["overall"] = {
+        "status": status,
+        "issues": issues,
+        "categories": CLARIFICATION_CATEGORIES,
+    }
+
+    return results
+
+
+def add_clarification_to_draft(
+    draft_path: Path,
+    question: str,
+    answer: str,
+    target_section: str | None = None,
+) -> None:
+    """Add a clarification Q&A to a draft and optionally update a section.
+
+    Args:
+        draft_path: Path to draft file
+        question: The clarification question
+        answer: The user's answer
+        target_section: Optional section to update with the answer
+    """
+    content = draft_path.read_text()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Find or create Clarifications section
+    if "## Clarifications" not in content:
+        # Insert before Technical Notes or at end of main content
+        insert_markers = ["## Technical Notes", "## Open Questions", "## Dependencies"]
+        insert_pos = len(content)
+        for marker in insert_markers:
+            pos = content.find(marker)
+            if pos != -1 and pos < insert_pos:
+                insert_pos = pos
+
+        clarifications = f"\n## Clarifications\n\n### Session {today}\n\n"
+        content = content[:insert_pos] + clarifications + content[insert_pos:]
+
+    # Check if today's session exists
+    session_header = f"### Session {today}"
+    if session_header not in content:
+        # Add new session header after ## Clarifications
+        clarifications_pos = content.find("## Clarifications") + len("## Clarifications")
+        next_line = content.find("\n", clarifications_pos)
+        if next_line != -1:
+            insert_pos = next_line + 1
+            content = content[:insert_pos] + f"\n{session_header}\n\n" + content[insert_pos:]
+
+    # Insert Q&A after session header
+    session_pos = content.find(session_header)
+    next_line = content.find("\n", session_pos + len(session_header))
+    if next_line != -1:
+        # Skip any existing blank lines
+        while next_line + 1 < len(content) and content[next_line + 1] == "\n":
+            next_line += 1
+        insert_pos = next_line + 1
+        qa_entry = f"- Q: {question}\n  - A: {answer}\n"
+        content = content[:insert_pos] + qa_entry + content[insert_pos:]
+
+    # Update modified timestamp in frontmatter
+    content = re.sub(
+        r'modified: "[^"]*"',
+        f'modified: "{datetime.now(timezone.utc).isoformat()}"',
+        content
+    )
+
+    draft_path.write_text(content)
+
+
+def get_existing_clarifications(draft_path: Path) -> list[dict]:
+    """Get existing clarifications from a draft.
+
+    Args:
+        draft_path: Path to draft file
+
+    Returns:
+        List of Q&A dicts from previous clarification sessions
+    """
+    parsed = parse_draft(draft_path)
+    body = parsed["body"]
+    clarifications = []
+
+    # Find Clarifications section
+    clarif_match = re.search(
+        r"## Clarifications\s*\n(.*?)(?=\n## [A-Z]|\Z)",
+        body,
+        re.DOTALL
+    )
+    if not clarif_match:
+        return clarifications
+
+    clarif_content = clarif_match.group(1)
+
+    # Extract Q&A pairs
+    qa_pattern = r"-\s*Q:\s*(.+?)\n\s*-\s*A:\s*(.+?)(?=\n-\s*Q:|\n###|\Z)"
+    for match in re.finditer(qa_pattern, clarif_content, re.DOTALL):
+        clarifications.append({
+            "question": match.group(1).strip(),
+            "answer": match.group(2).strip(),
+        })
+
+    return clarifications
+
+
+# =============================================================================
+# Checklist Support Functions
+# =============================================================================
+
+# Checklist categories for requirements quality
+CHECKLIST_CATEGORIES = [
+    "requirement_completeness",
+    "requirement_clarity",
+    "requirement_consistency",
+    "acceptance_criteria_quality",
+    "edge_case_coverage",
+    "non_functional_coverage",
+]
+
+
+def get_checklist_dir(draft_path: Path) -> Path:
+    """Get the checklist directory for a draft.
+
+    Args:
+        draft_path: Path to draft file
+
+    Returns:
+        Path to checklists directory for this draft type
+    """
+    # Checklists go in the same type directory as the draft
+    return draft_path.parent / "checklists"
+
+
+def generate_checklist_filename(draft_path: Path, domain: str) -> str:
+    """Generate a unique checklist filename.
+
+    Args:
+        draft_path: Path to the draft file
+        domain: Checklist domain (security, ux, api, general, etc.)
+
+    Returns:
+        Filename like "spec-001-auth-security.md"
+    """
+    parsed = parse_draft(draft_path)
+    draft_id = parsed["frontmatter"].get("draft_id", draft_path.stem)
+    # Sanitize domain
+    domain_slug = re.sub(r"[^a-z0-9]+", "-", domain.lower()).strip("-")
+    return f"{draft_id}-{domain_slug}.md"
+
+
+def link_checklist_to_draft(draft_path: Path, checklist_name: str) -> None:
+    """Add checklist reference to draft frontmatter.
+
+    Args:
+        draft_path: Path to draft file
+        checklist_name: Name of the checklist file
+    """
+    content = draft_path.read_text()
+
+    # Parse frontmatter
+    match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+    if not match:
+        return
+
+    try:
+        frontmatter = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError:
+        return
+
+    # Add or update checklists list
+    checklists = frontmatter.get("checklists", [])
+    if checklist_name not in checklists:
+        checklists.append(checklist_name)
+    frontmatter["checklists"] = checklists
+    frontmatter["modified"] = datetime.now(timezone.utc).isoformat()
+
+    # Regenerate content
+    new_frontmatter = yaml.dump(frontmatter, default_flow_style=False)
+    body = content[match.end():]
+    draft_path.write_text(f"---\n{new_frontmatter}---{body}")
+
+
+def create_checklist_file(
+    draft_path: Path,
+    domain: str,
+    items: list[dict],
+) -> Path:
+    """Create a checklist file for a draft.
+
+    Args:
+        draft_path: Path to the draft file
+        domain: Checklist domain (security, ux, api, general)
+        items: List of checklist items with id, text, category, reference
+
+    Returns:
+        Path to created checklist file
+    """
+    checklist_dir = get_checklist_dir(draft_path)
+    checklist_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = generate_checklist_filename(draft_path, domain)
+    checklist_path = checklist_dir / filename
+
+    parsed = parse_draft(draft_path)
+    draft_id = parsed["frontmatter"].get("draft_id", draft_path.stem)
+    title = parsed["frontmatter"].get("title", draft_path.stem)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Group items by category
+    items_by_category: dict[str, list[dict]] = {}
+    for item in items:
+        cat = item.get("category", "general")
+        if cat not in items_by_category:
+            items_by_category[cat] = []
+        items_by_category[cat].append(item)
+
+    # Build content
+    lines = [
+        f"# {domain.title()} Checklist: {title}",
+        "",
+        f"**Purpose**: Requirements quality validation for {domain}",
+        f"**Created**: {today}",
+        f"**Draft**: {draft_path.name}",
+        f"**Draft ID**: {draft_id}",
+        "",
+        "---",
+        "",
+    ]
+
+    category_names = {
+        "requirement_completeness": "Requirement Completeness",
+        "requirement_clarity": "Requirement Clarity",
+        "requirement_consistency": "Requirement Consistency",
+        "acceptance_criteria_quality": "Acceptance Criteria Quality",
+        "edge_case_coverage": "Edge Case Coverage",
+        "non_functional_coverage": "Non-Functional Coverage",
+        "general": "General",
+    }
+
+    for cat_id in CHECKLIST_CATEGORIES + ["general"]:
+        if cat_id not in items_by_category:
+            continue
+        cat_name = category_names.get(cat_id, cat_id.replace("_", " ").title())
+        lines.append(f"## {cat_name}")
+        lines.append("")
+        for item in items_by_category[cat_id]:
+            ref = f" [{item['reference']}]" if item.get("reference") else ""
+            lines.append(f"- [ ] {item['id']} - {item['text']}{ref}")
+        lines.append("")
+
+    lines.extend([
+        "---",
+        "",
+        "## Notes",
+        "",
+        "- Check items off as validated: `[x]`",
+        "- Mark gaps in draft with `[NEEDS CLARIFICATION]`",
+        "- Reference format: `[Spec §Section]` or `[Gap]`, `[Ambiguity]`",
+        "",
+    ])
+
+    checklist_path.write_text("\n".join(lines))
+
+    # Link checklist to draft
+    link_checklist_to_draft(draft_path, filename)
+
+    return checklist_path
+
+
+def get_linked_checklists(draft_path: Path) -> list[Path]:
+    """Get all checklists linked to a draft.
+
+    Args:
+        draft_path: Path to draft file
+
+    Returns:
+        List of paths to linked checklist files
+    """
+    parsed = parse_draft(draft_path)
+    checklist_names = parsed["frontmatter"].get("checklists", [])
+    checklist_dir = get_checklist_dir(draft_path)
+
+    checklists = []
+    for name in checklist_names:
+        checklist_path = checklist_dir / name
+        if checklist_path.exists():
+            checklists.append(checklist_path)
+
+    return checklists

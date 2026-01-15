@@ -496,3 +496,558 @@ def cache_issue(project_path: Path, issue: dict) -> Path:
 
     cache_file.write_text("\n".join(content))
     return cache_file
+
+
+# =============================================================================
+# Analysis Support Functions
+# =============================================================================
+
+# Vague terms that should be quantified
+VAGUE_TERMS = [
+    "fast", "quick", "slow", "scalable", "secure", "robust", "intuitive",
+    "flexible", "efficient", "reliable", "high-performance", "low-latency",
+    "user-friendly", "easy", "simple", "complex", "many", "few", "large",
+    "small", "often", "sometimes", "rarely", "soon", "later",
+]
+
+# Common term groups that might drift
+TERM_GROUPS = [
+    ["user", "account", "customer", "client", "member"],
+    ["token", "jwt", "credential", "auth", "session"],
+    ["api", "endpoint", "service", "route", "resource"],
+    ["error", "exception", "failure", "fault"],
+    ["create", "add", "new", "register"],
+    ["delete", "remove", "destroy", "drop"],
+]
+
+
+def load_cached_issues(
+    project_path: Path,
+    issue_type: str | None = None,
+) -> list[dict]:
+    """Load issues from cache directory.
+
+    Args:
+        project_path: Project root path
+        issue_type: Optional filter (epic, spec, story, task, bug)
+
+    Returns:
+        List of parsed issue dicts
+    """
+    cache_dir = get_cache_path(project_path)
+    if not cache_dir.exists():
+        return []
+
+    issues = []
+    pattern = f"{issue_type}-*.md" if issue_type else "*.md"
+
+    for cache_file in cache_dir.glob(pattern):
+        issue_data = parse_cached_issue(cache_file)
+        if issue_data:
+            issues.append(issue_data)
+
+    return issues
+
+
+def parse_cached_issue(cache_path: Path) -> dict[str, Any] | None:
+    """Parse a cached issue file.
+
+    Args:
+        cache_path: Path to cached issue file
+
+    Returns:
+        Parsed issue dict or None
+    """
+    content = cache_path.read_text()
+
+    # Extract frontmatter
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
+    if not match:
+        return None
+
+    try:
+        frontmatter = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError:
+        return None
+
+    body = content[match.end():]
+
+    # Extract title from body
+    title_match = re.match(r"#\s+(.+)", body)
+    title = title_match.group(1).strip() if title_match else cache_path.stem
+
+    return {
+        "number": frontmatter.get("issue_number"),
+        "type": frontmatter.get("type"),
+        "state": frontmatter.get("state"),
+        "cached_at": frontmatter.get("cached_at"),
+        "title": title,
+        "body": body,
+        "path": cache_path,
+    }
+
+
+def extract_requirements_from_spec(issue_body: str) -> list[dict]:
+    """Extract requirements from a spec issue body.
+
+    Args:
+        issue_body: The issue body markdown
+
+    Returns:
+        List of requirement dicts with id, text, type
+    """
+    requirements = []
+
+    # Find Requirements section
+    req_match = re.search(
+        r"##\s*Requirements\s*\n(.*?)(?=\n##\s+[A-Z]|\Z)",
+        issue_body,
+        re.DOTALL | re.IGNORECASE
+    )
+    if not req_match:
+        return requirements
+
+    req_section = req_match.group(1)
+
+    # Extract checkbox items
+    for i, match in enumerate(re.finditer(r"^\s*-\s*\[[ xX]?\]\s*(.+)$", req_section, re.MULTILINE)):
+        text = match.group(1).strip()
+        # Determine type based on context
+        req_type = "non-functional" if any(
+            kw in text.lower()
+            for kw in ["performance", "security", "scalab", "reliab", "latency"]
+        ) else "functional"
+
+        requirements.append({
+            "id": f"REQ-{i+1:03d}",
+            "text": text,
+            "type": req_type,
+        })
+
+    return requirements
+
+
+def extract_acceptance_criteria(issue_body: str) -> list[dict]:
+    """Extract acceptance criteria from an issue body.
+
+    Args:
+        issue_body: The issue body markdown
+
+    Returns:
+        List of criteria dicts with id, text, verified
+    """
+    criteria = []
+
+    # Find Acceptance Criteria section
+    ac_match = re.search(
+        r"##\s*Acceptance Criteria\s*\n(.*?)(?=\n##\s+[A-Z]|\Z)",
+        issue_body,
+        re.DOTALL | re.IGNORECASE
+    )
+    if not ac_match:
+        return criteria
+
+    ac_section = ac_match.group(1)
+
+    # Extract checkbox items
+    for i, match in enumerate(re.finditer(r"^\s*-\s*\[([ xX]?)\]\s*(.+)$", ac_section, re.MULTILINE)):
+        verified = match.group(1).lower() == "x"
+        text = match.group(2).strip()
+        criteria.append({
+            "id": f"AC-{i+1:03d}",
+            "text": text,
+            "verified": verified,
+        })
+
+    return criteria
+
+
+def extract_tasks_from_story(issue_body: str) -> list[dict]:
+    """Extract tasks from a story issue body.
+
+    Args:
+        issue_body: The issue body markdown
+
+    Returns:
+        List of task dicts with id, text, completed
+    """
+    tasks = []
+
+    # Find Tasks section
+    tasks_match = re.search(
+        r"(?:\*\*Tasks\*\*|##\s*Tasks)\s*:?\s*\n(.*?)(?=\n\*\*|\n##\s+[A-Z]|\Z)",
+        issue_body,
+        re.DOTALL | re.IGNORECASE
+    )
+    if not tasks_match:
+        # Try to find any checkbox list
+        tasks_match = re.search(
+            r"((?:^\s*-\s*\[[ xX]?\]\s*.+$\n?)+)",
+            issue_body,
+            re.MULTILINE
+        )
+
+    if not tasks_match:
+        return tasks
+
+    tasks_section = tasks_match.group(1)
+
+    for i, match in enumerate(re.finditer(r"^\s*-\s*\[([ xX]?)\]\s*(.+)$", tasks_section, re.MULTILINE)):
+        completed = match.group(1).lower() == "x"
+        text = match.group(2).strip()
+        tasks.append({
+            "id": f"TASK-{i+1:03d}",
+            "text": text,
+            "completed": completed,
+        })
+
+    return tasks
+
+
+def analyze_coverage(
+    specs: list[dict],
+    stories: list[dict],
+) -> dict[str, Any]:
+    """Analyze requirement coverage across specs and stories.
+
+    Args:
+        specs: List of spec issues
+        stories: List of story issues
+
+    Returns:
+        Coverage analysis results
+    """
+    results = {
+        "total_specs": len(specs),
+        "total_stories": len(stories),
+        "coverage_by_spec": {},
+        "uncovered_requirements": [],
+        "orphan_stories": [],
+        "overall_coverage_percent": 0,
+    }
+
+    total_requirements = 0
+    total_covered = 0
+
+    for spec in specs:
+        spec_num = spec["number"]
+        body = spec.get("body", "")
+        requirements = extract_requirements_from_spec(body)
+
+        # Find stories linked to this spec
+        linked_stories = []
+        for story in stories:
+            story_body = story.get("body", "")
+            if (f"Parent Spec: #{spec_num}" in story_body or
+                f"parent_spec: {spec_num}" in story_body or
+                f"Spec #{spec_num}" in story_body):
+                linked_stories.append(story)
+
+        # Calculate coverage
+        story_count = len(linked_stories)
+        req_count = len(requirements)
+        total_requirements += req_count
+
+        # Simple coverage heuristic: stories should cover requirements
+        # More stories = better coverage, up to the number of requirements
+        covered = min(story_count, req_count)
+        total_covered += covered
+
+        coverage_percent = (covered / req_count * 100) if req_count > 0 else 100
+
+        results["coverage_by_spec"][spec_num] = {
+            "title": spec.get("title", "Untitled"),
+            "requirements": req_count,
+            "stories": story_count,
+            "coverage_percent": round(coverage_percent, 1),
+            "uncovered": req_count - covered,
+        }
+
+        # Track uncovered requirements
+        if covered < req_count:
+            for req in requirements[covered:]:
+                results["uncovered_requirements"].append({
+                    "spec": spec_num,
+                    "requirement": req,
+                })
+
+    # Find orphan stories (not linked to any spec)
+    for story in stories:
+        story_body = story.get("body", "")
+        has_parent = any(
+            f"Parent Spec: #{spec['number']}" in story_body or
+            f"parent_spec: {spec['number']}" in story_body
+            for spec in specs
+        )
+        if not has_parent:
+            results["orphan_stories"].append({
+                "number": story["number"],
+                "title": story.get("title", "Untitled"),
+            })
+
+    # Overall coverage
+    if total_requirements > 0:
+        results["overall_coverage_percent"] = round(
+            total_covered / total_requirements * 100, 1
+        )
+
+    return results
+
+
+def detect_terminology_drift(issues: list[dict]) -> list[dict]:
+    """Detect terminology inconsistencies across issues.
+
+    Args:
+        issues: List of all issue dicts
+
+    Returns:
+        List of drift findings
+    """
+    findings = []
+    all_text = " ".join(i.get("body", "").lower() for i in issues)
+
+    for group in TERM_GROUPS:
+        used_terms = [t for t in group if t in all_text]
+        if len(used_terms) > 1:
+            # Check if multiple terms from same group are used
+            findings.append({
+                "category": "terminology_drift",
+                "severity": "MEDIUM",
+                "terms": used_terms,
+                "recommendation": f"Standardize on one of: {', '.join(used_terms)}",
+            })
+
+    return findings
+
+
+def detect_vague_language(issues: list[dict]) -> list[dict]:
+    """Detect vague language that should be quantified.
+
+    Args:
+        issues: List of all issue dicts
+
+    Returns:
+        List of vague language findings
+    """
+    findings = []
+
+    for issue in issues:
+        body = issue.get("body", "")
+        body_lower = body.lower()
+        issue_num = issue.get("number", "?")
+
+        for term in VAGUE_TERMS:
+            if term in body_lower:
+                # Find context around term
+                pattern = rf"[^.]*\b{re.escape(term)}\b[^.]*\."
+                matches = re.findall(pattern, body, re.IGNORECASE)
+                if matches:
+                    findings.append({
+                        "category": "vague_language",
+                        "severity": "MEDIUM",
+                        "issue": issue_num,
+                        "term": term,
+                        "context": matches[0][:100].strip(),
+                        "recommendation": f"Quantify '{term}' with specific metrics",
+                    })
+
+    return findings
+
+
+def detect_placeholders(issues: list[dict]) -> list[dict]:
+    """Detect placeholder content that needs completion.
+
+    Args:
+        issues: List of all issue dicts
+
+    Returns:
+        List of placeholder findings
+    """
+    findings = []
+    placeholder_patterns = [
+        (r"\[NEEDS CLARIFICATION\]", "Explicit clarification marker"),
+        (r"\[Requirement \d+\]", "Template placeholder requirement"),
+        (r"\[Criterion \d+\]", "Template placeholder criterion"),
+        (r"\[TODO[:\]]", "TODO marker"),
+        (r"\?\?\?", "Unknown marker"),
+        (r"\[TBD\]", "To be determined marker"),
+    ]
+
+    for issue in issues:
+        body = issue.get("body", "")
+        issue_num = issue.get("number", "?")
+
+        for pattern, description in placeholder_patterns:
+            if re.search(pattern, body, re.IGNORECASE):
+                findings.append({
+                    "category": "placeholder",
+                    "severity": "HIGH",
+                    "issue": issue_num,
+                    "pattern": description,
+                    "recommendation": f"Replace placeholder content in issue #{issue_num}",
+                })
+
+    return findings
+
+
+def validate_hierarchy(issues: list[dict]) -> list[dict]:
+    """Validate issue hierarchy integrity.
+
+    Args:
+        issues: List of all issue dicts
+
+    Returns:
+        List of hierarchy findings
+    """
+    findings = []
+    issue_numbers = {i.get("number") for i in issues if i.get("number")}
+
+    for issue in issues:
+        body = issue.get("body", "")
+        issue_type = issue.get("type", "unknown")
+        issue_num = issue.get("number", "?")
+
+        # Check for parent references
+        parent_patterns = [
+            (r"Parent Epic:\s*#(\d+)", "epic"),
+            (r"Parent Spec:\s*#(\d+)", "spec"),
+            (r"Parent Story:\s*#(\d+)", "story"),
+        ]
+
+        has_parent = False
+        for pattern, parent_type in parent_patterns:
+            match = re.search(pattern, body, re.IGNORECASE)
+            if match:
+                has_parent = True
+                parent_num = int(match.group(1))
+                if parent_num not in issue_numbers:
+                    findings.append({
+                        "category": "broken_reference",
+                        "severity": "CRITICAL",
+                        "issue": issue_num,
+                        "parent": parent_num,
+                        "recommendation": f"Parent #{parent_num} not found in cache - sync issues",
+                    })
+
+        # Specs should have parent epic
+        if issue_type == "spec" and not has_parent:
+            findings.append({
+                "category": "orphan_issue",
+                "severity": "HIGH",
+                "issue": issue_num,
+                "type": "spec",
+                "recommendation": f"Spec #{issue_num} has no parent Epic - add parent reference",
+            })
+
+        # Stories should have parent spec
+        if issue_type == "story" and not has_parent:
+            findings.append({
+                "category": "orphan_issue",
+                "severity": "HIGH",
+                "issue": issue_num,
+                "type": "story",
+                "recommendation": f"Story #{issue_num} has no parent Spec - add parent reference",
+            })
+
+    return findings
+
+
+def generate_analysis_report(
+    project_path: Path,
+    scope: str | None = None,
+) -> dict[str, Any]:
+    """Generate a comprehensive analysis report.
+
+    Args:
+        project_path: Project root path
+        scope: Optional scope filter (epic number, spec number, or None for all)
+
+    Returns:
+        Analysis report dict with findings and metrics
+    """
+    # Load all cached issues
+    all_issues = load_cached_issues(project_path)
+    if not all_issues:
+        return {
+            "error": "No cached issues found. Run /jcttech.sync first.",
+            "findings": [],
+            "metrics": {},
+        }
+
+    # Filter by scope if provided
+    if scope:
+        try:
+            scope_num = int(scope.replace("#", ""))
+            # Find the scope issue and its children
+            scope_issue = next(
+                (i for i in all_issues if i.get("number") == scope_num),
+                None
+            )
+            if scope_issue:
+                # For now, keep all issues (proper filtering would follow hierarchy)
+                pass
+        except ValueError:
+            pass
+
+    # Categorize issues
+    epics = [i for i in all_issues if i.get("type") == "epic"]
+    specs = [i for i in all_issues if i.get("type") == "spec"]
+    stories = [i for i in all_issues if i.get("type") == "story"]
+    tasks = [i for i in all_issues if i.get("type") == "task"]
+    bugs = [i for i in all_issues if i.get("type") == "bug"]
+
+    # Run all detection passes
+    findings = []
+    findings.extend(detect_terminology_drift(all_issues))
+    findings.extend(detect_vague_language(all_issues))
+    findings.extend(detect_placeholders(all_issues))
+    findings.extend(validate_hierarchy(all_issues))
+
+    # Analyze coverage
+    coverage = analyze_coverage(specs, stories)
+
+    # Add coverage findings
+    for spec_num, cov_data in coverage["coverage_by_spec"].items():
+        if cov_data["coverage_percent"] < 100:
+            findings.append({
+                "category": "coverage_gap",
+                "severity": "HIGH" if cov_data["coverage_percent"] < 50 else "MEDIUM",
+                "issue": spec_num,
+                "coverage": cov_data["coverage_percent"],
+                "recommendation": f"Spec #{spec_num} has {cov_data['uncovered']} uncovered requirements - create stories",
+            })
+
+    for orphan in coverage["orphan_stories"]:
+        findings.append({
+            "category": "orphan_story",
+            "severity": "MEDIUM",
+            "issue": orphan["number"],
+            "recommendation": f"Story #{orphan['number']} is not linked to a Spec",
+        })
+
+    # Sort findings by severity
+    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    findings.sort(key=lambda f: severity_order.get(f.get("severity", "LOW"), 4))
+
+    # Calculate metrics
+    metrics = {
+        "total_issues": len(all_issues),
+        "epics": len(epics),
+        "specs": len(specs),
+        "stories": len(stories),
+        "tasks": len(tasks),
+        "bugs": len(bugs),
+        "overall_coverage": coverage["overall_coverage_percent"],
+        "critical_findings": sum(1 for f in findings if f.get("severity") == "CRITICAL"),
+        "high_findings": sum(1 for f in findings if f.get("severity") == "HIGH"),
+        "medium_findings": sum(1 for f in findings if f.get("severity") == "MEDIUM"),
+        "low_findings": sum(1 for f in findings if f.get("severity") == "LOW"),
+    }
+
+    return {
+        "scope": scope or "all",
+        "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        "findings": findings,
+        "metrics": metrics,
+        "coverage": coverage,
+    }
