@@ -1,0 +1,149 @@
+---
+description: Sync local issue index with GitHub issues
+tools: []
+scripts:
+  sh: scripts/bash/jcttech/sync-issues.sh --verbose
+  ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly
+---
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+You **MUST** consider the user input before proceeding (if not empty).
+
+## Overview
+
+This command synchronizes the local `.specify/issues/index.md` with GitHub Issues. It:
+1. Fetches all issues with hierarchy labels (epic, spec, story, task, bug)
+2. Rebuilds the hierarchical index
+3. Caches issue content for offline reference
+4. Detects any local/remote conflicts
+
+## Outline
+
+1. **Check GitHub authentication**:
+   ```bash
+   gh auth status
+   ```
+
+2. **Run sync script**:
+   ```bash
+   {SCRIPT}
+   ```
+
+3. **Display sync results**:
+   - Number of issues fetched by type
+   - Any new issues since last sync
+   - Any issues that changed state
+
+4. **Report conflicts** if any:
+   - Local drafts that match pushed issues
+   - Issues modified externally
+
+5. **Show sync summary**:
+   - Last sync timestamp
+   - Total issues cached
+   - Index file location
+
+## What Gets Synced
+
+| Source | Destination |
+|--------|-------------|
+| GitHub Issues (type:epic) | index.md hierarchy |
+| GitHub Issues (type:spec) | index.md hierarchy + cache |
+| GitHub Issues (type:story) | index.md hierarchy + cache |
+| GitHub Issues (type:task) | index.md hierarchy + cache |
+| GitHub Issues (type:bug) | index.md hierarchy + cache |
+
+## Index Structure After Sync
+
+```markdown
+# Issue Index
+
+> Last synced: 2026-01-15T14:30:00Z
+> Repository: owner/repo
+
+## Hierarchy
+
+### Epic: User Authentication System (#100)
+**Status**: open | **Labels**: type:epic
+
+#### Specs
+| # | Title | Status | Stories |
+|---|-------|--------|---------|
+| #101 | JWT Authentication | open | 3 |
+
+##### Spec #101: JWT Authentication
+| # | Story | Status | Tasks |
+|---|-------|--------|-------|
+| #102 | JWT Token Service | in-progress | 4 |
+| #103 | Login Endpoint | open | 3 |
+
+---
+
+## Drafts (Not Yet Pushed)
+| Draft | Type | Ready |
+|-------|------|-------|
+| 002-oauth.md | spec | no |
+
+---
+
+## Metadata
+sync_version: 1
+last_full_sync: "2026-01-15T14:30:00Z"
+issues_cached: 15
+drafts_pending: 1
+```
+
+## Cache Structure
+
+After sync, individual issues are cached at:
+```
+.specify/issues/cache/
+├── epic-100.md
+├── spec-101.md
+├── story-102.md
+├── story-103.md
+└── task-110.md
+```
+
+Each cached file contains:
+- YAML frontmatter with metadata
+- Full issue body for offline reference
+
+## Example Output
+
+```
+Syncing with GitHub...
+
+Fetched from owner/repo:
+- Epics: 2
+- Specs: 5
+- Stories: 12
+- Tasks: 0 (tasks are checkboxes, not issues)
+- Bugs: 3
+
+New since last sync:
+- #115 [Story] Add OAuth Integration
+
+Changed state:
+- #102 [Story] JWT Token Service: open → closed
+
+Index updated: .specify/issues/index.md
+Sync complete: 2026-01-15T14:30:00Z
+```
+
+## When to Use
+
+- After making changes directly in GitHub
+- To catch up on team member's changes
+- Before starting `/jcttech.implement`
+- Periodically to keep index current
+
+Auto-sync happens automatically after:
+- `/jcttech.epic`
+- `/jcttech.push`
+- `/jcttech.plan`
