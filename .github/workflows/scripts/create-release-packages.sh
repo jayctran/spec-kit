@@ -40,8 +40,21 @@ rewrite_paths() {
 generate_commands() {
   local agent=$1 ext=$2 arg_format=$3 output_dir=$4 script_variant=$5
   mkdir -p "$output_dir"
-  for template in templates/commands/*.md; do
+
+  # Process both base commands (speckit.*) and jcttech commands (jcttech.*)
+  local -a command_sets=(
+    "templates/commands:speckit"
+    "templates/jcttech/commands:jcttech"
+  )
+
+  for command_set in "${command_sets[@]}"; do
+    local template_dir="${command_set%%:*}"
+    local prefix="${command_set##*:}"
+
+  for template in "$template_dir"/*.md; do
     [[ -f "$template" ]] || continue
+    # Skip CLAUDE.md files (context docs, not commands)
+    [[ "$(basename "$template")" == "CLAUDE.md" ]] && continue
     local name description script_command agent_script_command body
     name=$(basename "$template" .md)
     
@@ -92,21 +105,22 @@ generate_commands() {
     case $ext in
       toml)
         body=$(printf '%s\n' "$body" | sed 's/\\/\\\\/g')
-        { echo "description = \"$description\""; echo; echo "prompt = \"\"\""; echo "$body"; echo "\"\"\""; } > "$output_dir/speckit.$name.$ext" ;;
+        { echo "description = \"$description\""; echo; echo "prompt = \"\"\""; echo "$body"; echo "\"\"\""; } > "$output_dir/$prefix.$name.$ext" ;;
       md)
-        echo "$body" > "$output_dir/speckit.$name.$ext" ;;
+        echo "$body" > "$output_dir/$prefix.$name.$ext" ;;
       agent.md)
-        echo "$body" > "$output_dir/speckit.$name.$ext" ;;
+        echo "$body" > "$output_dir/$prefix.$name.$ext" ;;
     esac
   done
+  done  # end command_sets loop
 }
 
 generate_copilot_prompts() {
   local agents_dir=$1 prompts_dir=$2
   mkdir -p "$prompts_dir"
-  
-  # Generate a .prompt.md file for each .agent.md file
-  for agent_file in "$agents_dir"/speckit.*.agent.md; do
+
+  # Generate a .prompt.md file for each .agent.md file (both speckit.* and jcttech.*)
+  for agent_file in "$agents_dir"/*.agent.md; do
     [[ -f "$agent_file" ]] || continue
     
     local basename=$(basename "$agent_file" .agent.md)
@@ -150,7 +164,7 @@ build_variant() {
     esac
   fi
   
-  [[ -d templates ]] && { mkdir -p "$SPEC_DIR/templates"; find templates -type f -not -path "templates/commands/*" -not -name "vscode-settings.json" -exec cp --parents {} "$SPEC_DIR"/ \; ; echo "Copied templates -> .specify/templates"; }
+  [[ -d templates ]] && { mkdir -p "$SPEC_DIR/templates"; find templates -type f -not -path "templates/commands/*" -not -path "templates/jcttech/commands/*" -not -name "vscode-settings.json" -exec cp --parents {} "$SPEC_DIR"/ \; ; echo "Copied templates -> .specify/templates"; }
   
   # NOTE: We substitute {ARGS} internally. Outward tokens differ intentionally:
   #   * Markdown/prompt (claude, copilot, cursor-agent, opencode): $ARGUMENTS
