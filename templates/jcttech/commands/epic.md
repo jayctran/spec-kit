@@ -73,7 +73,7 @@ This command creates a new Epic issue in GitHub. Epics are top-level initiatives
 
 6. **Create the Epic issue** using GitHub MCP:
    - Title: `[Epic] {title}`
-   - Labels: `type:epic`
+   - Type: Epic
    - Body: Generated from step 5
 
 7. **Update local index** by running sync again.
@@ -88,5 +88,5 @@ User input: "User Authentication System"
 
 Creates:
 - Title: `[Epic] User Authentication System`
-- Labels: `type:epic`
+- Type: Epic
 - Issue body with structured sections

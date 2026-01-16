@@ -62,11 +62,11 @@ This command synchronizes the local `.docs/issues-index.md` with GitHub Issues. 
 
 | Source | Destination |
 |--------|-------------|
-| GitHub Issues (type:epic) | issues-index.md hierarchy |
-| GitHub Issues (type:spec) | issues-index.md hierarchy + cache |
-| GitHub Issues (type:story) | issues-index.md hierarchy + cache |
-| GitHub Issues (type:task) | issues-index.md hierarchy + cache |
-| GitHub Issues (type:bug) | issues-index.md hierarchy + cache |
+| GitHub Issues (Type: Epic) | issues-index.md hierarchy |
+| GitHub Issues (Type: Spec) | issues-index.md hierarchy + cache |
+| GitHub Issues (Type: Story) | issues-index.md hierarchy + cache |
+| GitHub Issues (Type: Task) | issues-index.md hierarchy + cache |
+| GitHub Issues (Type: Bug) | issues-index.md hierarchy + cache |
 | Local worktrees | issues-index.md Active Worktrees section |
 
 ## Index Structure After Sync
@@ -80,7 +80,7 @@ This command synchronizes the local `.docs/issues-index.md` with GitHub Issues. 
 ## Hierarchy
 
 ### Epic: User Authentication System (#100)
-**Status**: open | **Labels**: type:epic
+**Status**: open | **Type**: Epic
 
 #### Specs
 | # | Title | Status | Stories |

@@ -29,7 +29,7 @@ This command creates a local Spec draft in `.specify/drafts/spec/`. Unlike upstr
 
 2. **List available Epics** from `.docs/issues-index.md` or by running:
    ```bash
-   gh issue list --label type:epic --state open --json number,title
+   gh issue list --type Epic --state open --json number,title
    ```
 
 3. **Prompt user to select parent Epic**:

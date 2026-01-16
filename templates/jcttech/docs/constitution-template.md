@@ -85,12 +85,16 @@ Epic (strategic initiative)
 - **Story**: `[Story] User-Facing Action`
 - **Bug**: `[Bug] Brief Description`
 
-### Labels
+### Issue Types
 
-Required labels for all issues:
+All issues use GitHub's native Type field:
 
-- `type:epic`, `type:spec`, `type:story`, or `type:bug`
-- Additional labels as appropriate (priority, area, etc.)
+- **Epic**: Top-level initiatives
+- **Spec**: Technical specifications
+- **Story**: Implementable work units
+- **Bug**: Defects and regressions
+
+Additional labels (priority, status, area) can be applied as needed.
 
 ## Version Control
 

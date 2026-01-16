@@ -90,7 +90,8 @@ Bugs can be attached to Stories, Specs, or Epics.
 
 5. **Create GitHub issue**:
    - Title: `[Bug] {brief_description}`
-   - Labels: `type:bug`, severity label
+   - Type: Bug
+   - Labels: severity label (e.g., `priority-high`)
    - Body: Structured from step 4
 
 6. **Sync index**:
@@ -142,7 +143,7 @@ URL: https://github.com/owner/repo/issues/115
 Related to: #102 (JWT Token Service)
 Severity: High
 
-Labels: type:bug, priority-high
+Type: Bug | Labels: priority-high
 ```
 
 ## Quick Create Mode

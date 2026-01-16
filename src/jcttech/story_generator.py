@@ -184,7 +184,8 @@ def stories_from_plan_draft(plan_content: str, parent_spec: int) -> list[dict]:
                 parent_spec=parent_spec,
                 technical_notes=technical_notes,
             ),
-            "labels": ["type:story"],
+            "type": "Story",
+            "labels": ["status:draft"],
         })
 
     return stories

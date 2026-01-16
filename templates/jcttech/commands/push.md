@@ -61,12 +61,13 @@ This command pushes a local draft to GitHub as an issue. It validates that:
 
 6. **Map draft to GitHub issue format**:
    - Title: `[Spec] {title}`
-   - Labels: `type:spec`, `status:draft`
+   - Type: Spec
+   - Labels: `status:draft`
    - Body: Structured from draft sections with parent reference
 
 7. **Create GitHub issue**:
    ```bash
-   gh issue create --title "[Spec] {title}" --label "type:spec" --body "{formatted_body}"
+   gh issue create --title "[Spec] {title}" --type Spec --label "status:draft" --body "{formatted_body}"
    ```
 
 8. **Archive draft**:
@@ -116,7 +117,7 @@ Draft pushed successfully!
 Spec #101: JWT Authentication
 URL: https://github.com/owner/repo/issues/101
 Parent Epic: #100 (User Authentication System)
-Labels: type:spec, status:draft
+Type: Spec | Labels: status:draft
 
 Draft archived to: .specify/issues/cache/spec-101.md
 

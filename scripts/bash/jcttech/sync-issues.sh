@@ -44,21 +44,21 @@ CACHE_DIR="$ISSUES_DIR/cache"
 mkdir -p "$ISSUES_DIR"
 mkdir -p "$CACHE_DIR"
 
-# Fetch issues by type
-fetch_issues_by_label() {
-    local label="$1"
-    gh issue list --repo "$REPO" --label "$label" --state all --limit 100 \
-        --json number,title,state,labels,assignees,createdAt,updatedAt,body 2>/dev/null || echo "[]"
+# Fetch issues by native Type field
+fetch_issues_by_type() {
+    local issue_type="$1"
+    gh issue list --repo "$REPO" --type "$issue_type" --state all --limit 100 \
+        --json number,title,state,type,labels,assignees,createdAt,updatedAt,body 2>/dev/null || echo "[]"
 }
 
 # Fetch all relevant issues
 $VERBOSE && echo "Fetching issues from $REPO..."
 
-EPICS=$(fetch_issues_by_label "type:epic")
-SPECS=$(fetch_issues_by_label "type:spec")
-STORIES=$(fetch_issues_by_label "type:story")
-TASKS=$(fetch_issues_by_label "type:task")
-BUGS=$(fetch_issues_by_label "type:bug")
+EPICS=$(fetch_issues_by_type "Epic")
+SPECS=$(fetch_issues_by_type "Spec")
+STORIES=$(fetch_issues_by_type "Story")
+TASKS=$(fetch_issues_by_type "Task")
+BUGS=$(fetch_issues_by_type "Bug")
 
 # Count issues
 EPIC_COUNT=$(echo "$EPICS" | jq 'length')

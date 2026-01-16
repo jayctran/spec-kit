@@ -184,10 +184,18 @@ def build_hierarchy_from_issues(issues: list[dict]) -> dict[str, Any]:
 
 
 def _detect_issue_type(issue: dict) -> str:
-    """Detect issue type from labels or title prefix."""
-    labels = [l.get("name", l) if isinstance(l, dict) else l for l in issue.get("labels", [])]
+    """Detect issue type from native Type field, labels, or title prefix."""
+    # Check native Type field first (GitHub's built-in issue types)
+    issue_type = issue.get("type")
+    if issue_type:
+        # Type field can be a dict with "name" key or a string
+        type_name = issue_type.get("name", issue_type) if isinstance(issue_type, dict) else issue_type
+        type_lower = type_name.lower()
+        if type_lower in ("epic", "spec", "story", "task", "bug"):
+            return type_lower
 
-    # Check labels first
+    # Fall back to labels for backwards compatibility
+    labels = [l.get("name", l) if isinstance(l, dict) else l for l in issue.get("labels", [])]
     for label in labels:
         label_lower = label.lower()
         if "epic" in label_lower or label_lower == "type:epic":
@@ -201,7 +209,7 @@ def _detect_issue_type(issue: dict) -> str:
         if "bug" in label_lower or label_lower == "type:bug":
             return "bug"
 
-    # Check title prefix
+    # Check title prefix as last resort
     title = issue.get("title", "").lower()
     if title.startswith("[epic]") or title.startswith("epic:"):
         return "epic"

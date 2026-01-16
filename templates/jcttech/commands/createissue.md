@@ -112,4 +112,4 @@ For a Spec issue:
 Parent Epic: #42
 ```
 
-Labels: `type:spec`, `status:draft`
+Type: Spec | Labels: `status:draft`

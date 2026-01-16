@@ -176,7 +176,8 @@ def parse_issue_template(template_path: Path) -> dict:
             "name": "Spec",
             "description": "Technical specification",
             "title_prefix": "[Spec] ",
-            "labels": ["type:spec"],
+            "type": "Spec",
+            "labels": ["status:draft"],
             "fields": [
                 {"id": "overview", "type": "textarea", "label": "Overview", "required": True},
                 ...

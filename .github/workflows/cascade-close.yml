@@ -31,10 +31,9 @@ jobs:
           for ISSUE in ${{ steps.find_issues.outputs.issues }}; do
             echo "Processing issue #$ISSUE"
 
-            # Check issue type via labels
-            LABELS=$(gh issue view $ISSUE --json labels -q '.labels[].name' 2>/dev/null || echo "")
-
-            if echo "$LABELS" | grep -q "type:story"; then
+            # Check issue type via native Type field
+            ISSUE_TYPE=$(gh issue view $ISSUE --json type -q '.type.name' 2>/dev/null || echo "")
+            if [ "$ISSUE_TYPE" = "Story" ]; then
               echo "Issue #$ISSUE is a Story - checking for cascade close"
 
               # Get parent Spec from issue body
@@ -45,7 +44,7 @@ jobs:
                 echo "Parent Spec: #$PARENT_SPEC"
 
                 # Count remaining open Stories under this Spec
-                OPEN_COUNT=$(gh issue list --label type:story --state open --json body \
+                OPEN_COUNT=$(gh issue list --type Story --state open --json body \
                   -q "[.[] | select(.body | test(\"Parent Spec:\\\\s*#$PARENT_SPEC\"; \"i\"))] | length" 2>/dev/null || echo "0")
 
                 echo "Open Stories under Spec #$PARENT_SPEC: $OPEN_COUNT"
@@ -61,7 +60,7 @@ jobs:
                   if [ -n "$PARENT_EPIC" ]; then
                     echo "Parent Epic: #$PARENT_EPIC"
 
-                    OPEN_SPECS=$(gh issue list --label type:spec --state open --json body \
+                    OPEN_SPECS=$(gh issue list --type Spec --state open --json body \
                       -q "[.[] | select(.body | test(\"Parent Epic:\\\\s*#$PARENT_EPIC\"; \"i\"))] | length" 2>/dev/null || echo "0")
 
                     echo "Open Specs under Epic #$PARENT_EPIC: $OPEN_SPECS"
@@ -78,6 +77,6 @@ jobs:
                 echo "No parent Spec found for Story #$ISSUE"
               fi
             else
-              echo "Issue #$ISSUE is not a Story (labels: $LABELS) - skipping cascade check"
+              echo "Issue #$ISSUE is not a Story (type: $ISSUE_TYPE) - skipping cascade check"
             fi
           done

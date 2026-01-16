@@ -62,7 +62,7 @@ fi
 
 # Count open Stories under this Spec
 # Note: Using jq to filter by body content containing "Parent Spec: #N"
-OPEN_STORIES=$(gh issue list --repo "$REPO" --label type:story --state open --json body,number 2>/dev/null \
+OPEN_STORIES=$(gh issue list --repo "$REPO" --type Story --state open --json body,number 2>/dev/null \
     | jq "[.[] | select(.body | test(\"Parent Spec:\\\\s*#$PARENT_SPEC\"; \"i\"))] | length")
 
 if [[ "$OPEN_STORIES" -eq 0 ]]; then
@@ -83,7 +83,7 @@ if [[ "$OPEN_STORIES" -eq 0 ]]; then
 
     if [[ -n "$PARENT_EPIC" ]]; then
         # Count open Specs under this Epic
-        OPEN_SPECS=$(gh issue list --repo "$REPO" --label type:spec --state open --json body,number 2>/dev/null \
+        OPEN_SPECS=$(gh issue list --repo "$REPO" --type Spec --state open --json body,number 2>/dev/null \
             | jq "[.[] | select(.body | test(\"Parent Epic:\\\\s*#$PARENT_EPIC\"; \"i\"))] | length")
 
         if [[ "$OPEN_SPECS" -eq 0 ]]; then

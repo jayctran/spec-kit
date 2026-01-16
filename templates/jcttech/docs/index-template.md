@@ -43,11 +43,11 @@ This file tracks all GitHub issues related to this project's spec-driven workflo
 ### Hierarchy Structure
 
 ```
-Epic (#N)                         [type:epic]
-  └── Spec (#N)                   [type:spec]
-        └── Story (#N)            [type:story]
+Epic (#N)                         [Type: Epic]
+  └── Spec (#N)                   [Type: Spec]
+        └── Story (#N)            [Type: Story]
               └── [ ] Task        (checkbox in Story body)
-              └── Bug (#N)        [type:bug]
+              └── Bug (#N)        [Type: Bug]
 ```
 
 ### Sync Behavior

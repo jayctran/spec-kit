@@ -69,7 +69,8 @@ This is the key command that transforms specifications into implementable work u
 
 5. **Create Story issues** in GitHub:
    - Title: `[Story] {story_title}`
-   - Labels: `type:story`
+   - Type: Story
+   - Labels: `status:draft`
    - Each Story references parent Spec
 
 6. **Update Spec issue** to list child Stories:
