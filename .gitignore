@@ -44,3 +44,7 @@ env/
 .genreleases/
 *.zip
 sdd-*/
+
+# Generated jcttech commands (installed via `specify install-commands`)
+# Note: In user projects, you may want to commit these files
+.claude/commands/jcttech.*

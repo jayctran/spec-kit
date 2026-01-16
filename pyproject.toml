@@ -23,3 +23,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/specify_cli", "src/jcttech"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"templates/jcttech" = "jcttech/templates"
+"scripts/bash/jcttech" = "jcttech/scripts/bash"
+

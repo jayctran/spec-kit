@@ -506,6 +506,169 @@ def init(
         )
 
 
+@jcttech_app.command(name="install-commands")
+def install_commands(
+    ai_assistant: str = typer.Option(
+        "claude",
+        "--ai",
+        help="AI assistant to install commands for: claude, gemini, copilot, cursor-agent, etc.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite existing commands",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Show verbose output",
+    ),
+):
+    """Install jcttech commands to the current project.
+
+    This copies bundled jcttech command templates to your project's
+    agent command directory (e.g., .claude/commands/ for Claude Code).
+
+    Run this in a project directory after `specify init` or to update
+    commands in an existing project.
+    """
+    import importlib.resources
+    import shutil
+
+    console = specify_cli.console
+    project_path = Path.cwd()
+
+    # Determine command directory based on AI assistant
+    cmd_dirs = {
+        "claude": ".claude/commands",
+        "gemini": ".gemini/commands",
+        "copilot": ".github/agents",
+        "cursor-agent": ".cursor/commands",
+        "qwen": ".qwen/commands",
+        "opencode": ".opencode/command",
+        "windsurf": ".windsurf/workflows",
+        "codex": ".codex/prompts",
+        "kilocode": ".kilocode/workflows",
+        "auggie": ".augment/commands",
+        "roo": ".roo/commands",
+        "codebuddy": ".codebuddy/commands",
+        "amp": ".agents/commands",
+        "shai": ".shai/commands",
+        "q": ".amazonq/prompts",
+        "bob": ".bob/commands",
+        "qoder": ".qoder/commands",
+    }
+
+    if ai_assistant not in cmd_dirs:
+        console.print(f"[red]Unknown AI assistant: {ai_assistant}[/red]")
+        console.print(f"Supported: {', '.join(cmd_dirs.keys())}")
+        raise typer.Exit(1)
+
+    cmd_dir = project_path / cmd_dirs[ai_assistant]
+    cmd_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine file extension based on agent
+    ext = "md"
+    if ai_assistant in ("gemini", "qwen"):
+        ext = "toml"
+    elif ai_assistant == "copilot":
+        ext = "agent.md"
+
+    console.print(f"[bold cyan]Installing jcttech commands for {ai_assistant}...[/bold cyan]")
+
+    # Try to find bundled templates
+    try:
+        # For installed package, use importlib.resources
+        try:
+            import jcttech.templates.commands as templates_pkg
+            templates_path = Path(importlib.resources.files(templates_pkg))
+        except (ImportError, TypeError):
+            # Fallback: look in package directory
+            jcttech_pkg = Path(__file__).parent
+            templates_path = jcttech_pkg / "templates" / "commands"
+
+        if not templates_path.exists():
+            # Development mode: use repo templates directly
+            repo_root = project_path
+            # Try to find repo root by looking for pyproject.toml
+            for parent in [project_path] + list(project_path.parents):
+                if (parent / "pyproject.toml").exists() and (parent / "templates" / "jcttech" / "commands").exists():
+                    templates_path = parent / "templates" / "jcttech" / "commands"
+                    break
+
+        if not templates_path.exists():
+            console.print("[red]Could not find bundled jcttech command templates.[/red]")
+            console.print("Try reinstalling: uv tool install specify-cli --force --from /path/to/spec-kit")
+            raise typer.Exit(1)
+
+        installed = 0
+        skipped = 0
+
+        for template_file in templates_path.glob("*.md"):
+            name = template_file.stem
+
+            # Skip CLAUDE.md marker files
+            if name.upper() == "CLAUDE":
+                continue
+
+            output_name = f"jcttech.{name}.{ext}"
+            output_path = cmd_dir / output_name
+
+            if output_path.exists() and not force:
+                if debug:
+                    console.print(f"  [dim]Skipping {output_name} (exists)[/dim]")
+                skipped += 1
+                continue
+
+            # Read and process template
+            content = template_file.read_text()
+
+            # For TOML format (gemini, qwen), wrap in TOML structure
+            if ext == "toml":
+                # Extract description from frontmatter
+                import re
+                desc_match = re.search(r'^description:\s*(.+)$', content, re.MULTILINE)
+                description = desc_match.group(1).strip() if desc_match else name
+
+                # Escape backslashes for TOML
+                content = content.replace('\\', '\\\\')
+
+                content = f'description = "{description}"\n\nprompt = """\n{content}\n"""'
+
+            # Replace {ARGS} placeholder
+            arg_format = "{{args}}" if ai_assistant in ("gemini", "qwen") else "$ARGUMENTS"
+            content = content.replace("{ARGS}", arg_format)
+
+            # Rewrite paths for .specify structure
+            content = content.replace("templates/", ".specify/templates/")
+            content = content.replace("scripts/", ".specify/scripts/")
+            content = content.replace("memory/", ".specify/memory/")
+
+            output_path.write_text(content)
+            installed += 1
+            if debug:
+                console.print(f"  [green]Installed {output_name}[/green]")
+
+        console.print()
+        console.print(f"[green]Installed {installed} command(s) to {cmd_dir}[/green]")
+        if skipped:
+            console.print(f"[dim]Skipped {skipped} existing command(s) (use --force to overwrite)[/dim]")
+
+        # List installed commands
+        console.print()
+        console.print("[bold]Available jcttech commands:[/bold]")
+        for cmd_file in sorted(cmd_dir.glob("jcttech.*")):
+            cmd_name = cmd_file.stem.replace(".", " → /")
+            console.print(f"  /{cmd_file.stem.replace('.', '.')}")
+
+    except Exception as e:
+        console.print(f"[red]Error installing commands: {e}[/red]")
+        if debug:
+            import traceback
+            console.print(traceback.format_exc())
+        raise typer.Exit(1)
+
+
 @jcttech_app.command()
 def check():
     """Check that all required tools are installed."""
