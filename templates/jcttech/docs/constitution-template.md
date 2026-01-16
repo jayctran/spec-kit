@@ -64,6 +64,29 @@ Use `/jcttech.architecture` to review and regenerate documentation.
 - [Define API documentation requirements]
 - [Define README update rules]
 
+## GitHub Configuration
+
+### Project Board
+
+All issues should be added to a GitHub Project for tracking:
+
+```yaml
+# Configure in .specify/config.yml
+github:
+  project: "PROJECT_NUMBER_OR_URL"  # e.g., "5" or "https://github.com/orgs/myorg/projects/5"
+```
+
+When creating issues, the `/jcttech.*` commands will automatically add them to this project.
+
+### Issue Types
+
+Ensure these custom Issue Types are configured in your repository settings:
+- Epic
+- Spec
+- Story
+- Bug
+- Task
+
 ## Issue Workflow
 
 ### Hierarchy Rules

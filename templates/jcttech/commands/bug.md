@@ -88,18 +88,26 @@ Bugs can be attached to Stories, Specs, or Epics.
    [Screenshots, logs, etc.]
    ```
 
-5. **Create GitHub issue**:
+5. **Read project configuration** from `.specify/config.yml` (if exists).
+
+6. **Create GitHub issue** with parent relationship and project:
+   ```bash
+   gh issue create --title "[Bug] {brief_description}" --type Bug --label "{severity_label}" --parent {parent_issue_number} --project {project_number} --body "{bug_body}"
+   ```
+
    - Title: `[Bug] {brief_description}`
    - Type: Bug
    - Labels: severity label (e.g., `priority-high`)
+   - Parent: Links to related issue via native GitHub sub-issue relationship
+   - Project: Added to configured GitHub Project board
    - Body: Structured from step 4
 
-6. **Sync index**:
+7. **Sync index**:
    ```bash
    {SCRIPT}
    ```
 
-7. **Report success**:
+8. **Report success**:
    - Bug issue number and URL
    - Parent issue reference
    - Severity assigned

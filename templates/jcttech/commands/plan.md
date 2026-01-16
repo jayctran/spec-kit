@@ -67,26 +67,33 @@ This is the key command that transforms specifications into implementable work u
    [Implementation guidance]
    ```
 
-5. **Create Story issues** in GitHub:
+5. **Read project configuration** from `.specify/config.yml` (if exists).
+
+6. **Create Story issues** in GitHub with parent relationship and project:
+   ```bash
+   gh issue create --title "[Story] {story_title}" --type Story --label "status:draft" --parent {spec_number} --project {project_number} --body "{story_body}"
+   ```
+
    - Title: `[Story] {story_title}`
    - Type: Story
    - Labels: `status:draft`
-   - Each Story references parent Spec
+   - Parent: Links to Spec via native GitHub sub-issue relationship
+   - Project: Added to configured GitHub Project board
 
-6. **Update Spec issue** to list child Stories:
+7. **Update Spec issue** to list child Stories:
    Add comment or update body with links to created Stories.
 
-7. **Update architecture** if needed:
+8. **Update architecture** if needed:
    - Check if new components/services are introduced
    - If material changes, update `.docs/architecture.md`
    - Prompt to update `.docs/architecture.excalidraw`
 
-8. **Sync index**:
+9. **Sync index**:
    ```bash
    {SCRIPT}
    ```
 
-9. **Report success**:
+10. **Report success**:
    - List of created Story issues
    - Summary: "Created N Stories with M total tasks"
    - Next steps: "Use `/jcttech.implement` to work on a Story"

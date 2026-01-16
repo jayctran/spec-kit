@@ -41,15 +41,14 @@ if [[ -z "$REPO" ]]; then
     exit 1
 fi
 
-# Get Story body to find parent Spec
-STORY_BODY=$(gh issue view "$STORY_NUMBER" --repo "$REPO" --json body -q '.body' 2>/dev/null)
-if [[ -z "$STORY_BODY" ]]; then
-    echo "ERROR: Could not fetch Story #$STORY_NUMBER" >&2
-    exit 1
-fi
+# Get parent Spec from native GitHub parent relationship
+PARENT_SPEC=$(gh issue view "$STORY_NUMBER" --repo "$REPO" --json parent -q '.parent.number' 2>/dev/null || echo "")
 
-# Extract parent Spec number
-PARENT_SPEC=$(echo "$STORY_BODY" | grep -oP 'Parent Spec:\s*#\K\d+' || echo "")
+# Fallback to body parsing for backwards compatibility
+if [[ -z "$PARENT_SPEC" ]]; then
+    STORY_BODY=$(gh issue view "$STORY_NUMBER" --repo "$REPO" --json body -q '.body' 2>/dev/null)
+    PARENT_SPEC=$(echo "$STORY_BODY" | grep -oP 'Parent Spec:\s*#\K\d+' || echo "")
+fi
 
 if [[ -z "$PARENT_SPEC" ]]; then
     if $JSON_MODE; then
@@ -60,10 +59,15 @@ if [[ -z "$PARENT_SPEC" ]]; then
     exit 0
 fi
 
-# Count open Stories under this Spec
-# Note: Using jq to filter by body content containing "Parent Spec: #N"
-OPEN_STORIES=$(gh issue list --repo "$REPO" --type Story --state open --json body,number 2>/dev/null \
-    | jq "[.[] | select(.body | test(\"Parent Spec:\\\\s*#$PARENT_SPEC\"; \"i\"))] | length")
+# Count open Stories under this Spec using native parent relationship
+OPEN_STORIES=$(gh issue list --repo "$REPO" --type Story --state open --json number,parent 2>/dev/null \
+    | jq "[.[] | select(.parent.number == $PARENT_SPEC)] | length")
+
+# Fallback to body parsing for backwards compatibility if no results
+if [[ "$OPEN_STORIES" == "0" || -z "$OPEN_STORIES" ]]; then
+    OPEN_STORIES=$(gh issue list --repo "$REPO" --type Story --state open --json body,number 2>/dev/null \
+        | jq "[.[] | select(.body | test(\"Parent Spec:\\\\s*#$PARENT_SPEC\"; \"i\"))] | length")
+fi
 
 if [[ "$OPEN_STORIES" -eq 0 ]]; then
     # All Stories complete - close the Spec
@@ -77,14 +81,25 @@ if [[ "$OPEN_STORIES" -eq 0 ]]; then
     gh issue close "$PARENT_SPEC" --repo "$REPO" \
         --comment "All Stories completed. Auto-closing Spec." 2>/dev/null
 
-    # Now check parent Epic
-    SPEC_BODY=$(gh issue view "$PARENT_SPEC" --repo "$REPO" --json body -q '.body' 2>/dev/null)
-    PARENT_EPIC=$(echo "$SPEC_BODY" | grep -oP 'Parent Epic:\s*#\K\d+' || echo "")
+    # Now check parent Epic using native relationship
+    PARENT_EPIC=$(gh issue view "$PARENT_SPEC" --repo "$REPO" --json parent -q '.parent.number' 2>/dev/null || echo "")
+
+    # Fallback to body parsing for backwards compatibility
+    if [[ -z "$PARENT_EPIC" ]]; then
+        SPEC_BODY=$(gh issue view "$PARENT_SPEC" --repo "$REPO" --json body -q '.body' 2>/dev/null)
+        PARENT_EPIC=$(echo "$SPEC_BODY" | grep -oP 'Parent Epic:\s*#\K\d+' || echo "")
+    fi
 
     if [[ -n "$PARENT_EPIC" ]]; then
-        # Count open Specs under this Epic
-        OPEN_SPECS=$(gh issue list --repo "$REPO" --type Spec --state open --json body,number 2>/dev/null \
-            | jq "[.[] | select(.body | test(\"Parent Epic:\\\\s*#$PARENT_EPIC\"; \"i\"))] | length")
+        # Count open Specs under this Epic using native parent relationship
+        OPEN_SPECS=$(gh issue list --repo "$REPO" --type Spec --state open --json number,parent 2>/dev/null \
+            | jq "[.[] | select(.parent.number == $PARENT_EPIC)] | length")
+
+        # Fallback to body parsing for backwards compatibility
+        if [[ "$OPEN_SPECS" == "0" || -z "$OPEN_SPECS" ]]; then
+            OPEN_SPECS=$(gh issue list --repo "$REPO" --type Spec --state open --json body,number 2>/dev/null \
+                | jq "[.[] | select(.body | test(\"Parent Epic:\\\\s*#$PARENT_EPIC\"; \"i\"))] | length")
+        fi
 
         if [[ "$OPEN_SPECS" -eq 0 ]]; then
             # All Specs complete - close the Epic

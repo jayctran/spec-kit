@@ -71,14 +71,25 @@ This command creates a new Epic issue in GitHub. Epics are top-level initiatives
    _Specs will be linked here as they are created._
    ```
 
-6. **Create the Epic issue** using GitHub MCP:
+6. **Read project configuration** from `.specify/config.yml`:
+   ```yaml
+   github:
+     project: "PROJECT_NUMBER"
+   ```
+
+7. **Create the Epic issue** with project association:
+   ```bash
+   gh issue create --title "[Epic] {title}" --type Epic --project {project_number} --body "{epic_body}"
+   ```
+
    - Title: `[Epic] {title}`
    - Type: Epic
+   - Project: Added to configured GitHub Project
    - Body: Generated from step 5
 
-7. **Update local index** by running sync again.
+8. **Update local index** by running sync again.
 
-8. **Report success**:
+9. **Report success**:
    - Epic issue number and URL
    - Instructions to create Specs: "Use `/jcttech.specify` to create specs under this epic"
 

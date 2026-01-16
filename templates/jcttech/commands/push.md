@@ -65,21 +65,26 @@ This command pushes a local draft to GitHub as an issue. It validates that:
    - Labels: `status:draft`
    - Body: Structured from draft sections with parent reference
 
-7. **Create GitHub issue**:
+7. **Read project configuration** from `.specify/config.yml` (if exists).
+
+8. **Create GitHub issue** with parent relationship and project:
    ```bash
-   gh issue create --title "[Spec] {title}" --type Spec --label "status:draft" --body "{formatted_body}"
+   gh issue create --title "[Spec] {title}" --type Spec --label "status:draft" --parent {parent_epic} --project {project_number} --body "{formatted_body}"
    ```
 
-8. **Archive draft**:
+   > The `--parent` flag creates a native GitHub sub-issue relationship, visible in the issue sidebar.
+   > The `--project` flag adds the issue to the configured GitHub Project board.
+
+9. **Archive draft**:
    - Move draft to `.specify/issues/cache/spec-{number}.md`
    - Update frontmatter with `github_issue: {number}`
 
-9. **Update index**:
-   ```bash
-   {SCRIPT}
-   ```
+10. **Update index**:
+    ```bash
+    {SCRIPT}
+    ```
 
-10. **Report success**:
+11. **Report success**:
     - Issue number and URL
     - Parent Epic reference
     - Next steps: "Use `/jcttech.plan` to create Stories"

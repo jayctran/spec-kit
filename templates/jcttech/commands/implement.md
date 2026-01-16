@@ -220,23 +220,23 @@ Auto-merge: ENABLED - will merge when CI passes
 When a Story's PR is merged and the Story closes:
 
 ```bash
-# Get parent Spec from Story body
-PARENT_SPEC=$(gh issue view {story_number} --json body -q '.body' | grep -oP 'Parent Spec:\s*#\K\d+')
+# Get parent Spec from native GitHub relationship
+PARENT_SPEC=$(gh issue view {story_number} --json parent -q '.parent.number')
 
-# Check if all Stories in parent Spec are closed
-OPEN_STORIES=$(gh issue list --type Story --state open --json body \
-  -q "[.[] | select(.body | test(\"Parent Spec:\\\\s*#${PARENT_SPEC}\"; \"i\"))] | length")
+# Check if all Stories in parent Spec are closed (using native parent relationship)
+OPEN_STORIES=$(gh issue list --type Story --state open --json number,parent \
+  -q "[.[] | select(.parent.number == ${PARENT_SPEC})] | length")
 
 if [ "$OPEN_STORIES" -eq 0 ]; then
   echo "All Stories in Spec #${PARENT_SPEC} complete - closing Spec"
   gh issue close $PARENT_SPEC --comment "All Stories completed. Auto-closing Spec."
 
-  # Check parent Epic
-  PARENT_EPIC=$(gh issue view $PARENT_SPEC --json body -q '.body' | grep -oP 'Parent Epic:\s*#\K\d+')
+  # Check parent Epic (using native relationship)
+  PARENT_EPIC=$(gh issue view $PARENT_SPEC --json parent -q '.parent.number')
 
   if [ -n "$PARENT_EPIC" ]; then
-    OPEN_SPECS=$(gh issue list --type Spec --state open --json body \
-      -q "[.[] | select(.body | test(\"Parent Epic:\\\\s*#${PARENT_EPIC}\"; \"i\"))] | length")
+    OPEN_SPECS=$(gh issue list --type Spec --state open --json number,parent \
+      -q "[.[] | select(.parent.number == ${PARENT_EPIC})] | length")
 
     if [ "$OPEN_SPECS" -eq 0 ]; then
       echo "All Specs in Epic #${PARENT_EPIC} complete - closing Epic"
