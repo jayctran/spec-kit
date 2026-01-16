@@ -323,7 +323,7 @@ def _initialize_issue_tracking_structure(
             console.print()
             console.print("[bold cyan]Issue tracking structure initialized:[/bold cyan]")
             if "index_md" in paths_created:
-                console.print("  [dim]Created .specify/issues/index.md[/dim]")
+                console.print("  [dim]Created .docs/issues-index.md[/dim]")
             console.print("  [dim]Created .specify/drafts/spec/[/dim]")
             console.print("  [dim]Created .specify/drafts/plan/[/dim]")
 

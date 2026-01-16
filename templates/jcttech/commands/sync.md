@@ -16,7 +16,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Overview
 
-This command synchronizes the local `.specify/issues/index.md` with GitHub Issues. It:
+This command synchronizes the local `.docs/issues-index.md` with GitHub Issues. It:
 1. Fetches all issues with hierarchy labels (epic, spec, story, task, bug)
 2. Rebuilds the hierarchical index
 3. Caches issue content for offline reference
@@ -52,11 +52,11 @@ This command synchronizes the local `.specify/issues/index.md` with GitHub Issue
 
 | Source | Destination |
 |--------|-------------|
-| GitHub Issues (type:epic) | index.md hierarchy |
-| GitHub Issues (type:spec) | index.md hierarchy + cache |
-| GitHub Issues (type:story) | index.md hierarchy + cache |
-| GitHub Issues (type:task) | index.md hierarchy + cache |
-| GitHub Issues (type:bug) | index.md hierarchy + cache |
+| GitHub Issues (type:epic) | issues-index.md hierarchy |
+| GitHub Issues (type:spec) | issues-index.md hierarchy + cache |
+| GitHub Issues (type:story) | issues-index.md hierarchy + cache |
+| GitHub Issues (type:task) | issues-index.md hierarchy + cache |
+| GitHub Issues (type:bug) | issues-index.md hierarchy + cache |
 
 ## Index Structure After Sync
 
@@ -132,7 +132,7 @@ New since last sync:
 Changed state:
 - #102 [Story] JWT Token Service: open → closed
 
-Index updated: .specify/issues/index.md
+Index updated: .docs/issues-index.md
 Sync complete: 2026-01-15T14:30:00Z
 ```
 

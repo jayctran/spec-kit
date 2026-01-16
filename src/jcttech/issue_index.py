@@ -22,7 +22,7 @@ ISSUE_TYPES = ["epic", "spec", "story", "task", "bug"]
 
 def get_index_path(project_path: Path) -> Path:
     """Get the path to the issue index file."""
-    return project_path / ".specify" / "issues" / "index.md"
+    return project_path / ".docs" / "issues-index.md"
 
 
 def get_cache_path(project_path: Path) -> Path:
@@ -39,7 +39,7 @@ def initialize_index_structure(project_path: Path) -> dict[str, Path]:
     """Initialize the issue tracking directory structure.
 
     Creates:
-    - .specify/issues/index.md
+    - .docs/issues-index.md
     - .specify/issues/cache/
     - .specify/drafts/spec/
     - .specify/drafts/plan/
@@ -49,14 +49,14 @@ def initialize_index_structure(project_path: Path) -> dict[str, Path]:
     """
     paths_created = {}
 
-    # Create issues directory
-    issues_dir = project_path / ".specify" / "issues"
-    issues_dir.mkdir(parents=True, exist_ok=True)
-    paths_created["issues_dir"] = issues_dir
+    # Create .docs directory for index
+    docs_dir = project_path / ".docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    paths_created["docs_dir"] = docs_dir
 
-    # Create cache directory
-    cache_dir = issues_dir / "cache"
-    cache_dir.mkdir(exist_ok=True)
+    # Create issues cache directory
+    cache_dir = project_path / ".specify" / "issues" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
     paths_created["cache_dir"] = cache_dir
 
     # Create drafts directories
@@ -65,8 +65,8 @@ def initialize_index_structure(project_path: Path) -> dict[str, Path]:
     (drafts_dir / "plan").mkdir(parents=True, exist_ok=True)
     paths_created["drafts_dir"] = drafts_dir
 
-    # Create initial index.md if it doesn't exist
-    index_path = issues_dir / "index.md"
+    # Create initial issues-index.md if it doesn't exist
+    index_path = docs_dir / "issues-index.md"
     if not index_path.exists():
         index_path.write_text(generate_empty_index())
         paths_created["index_md"] = index_path

@@ -27,7 +27,7 @@ This command creates a local Spec draft in `.specify/drafts/spec/`. Unlike upstr
    - Spec title/name
    - Optional description
 
-2. **List available Epics** from `.specify/issues/index.md` or by running:
+2. **List available Epics** from `.docs/issues-index.md` or by running:
    ```bash
    gh issue list --label type:epic --state open --json number,title
    ```
