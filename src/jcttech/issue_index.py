@@ -247,6 +247,7 @@ def generate_index_markdown(
     hierarchy: dict[str, Any],
     repo_name: str,
     drafts: list[dict] | None = None,
+    worktrees: list[dict] | None = None,
 ) -> str:
     """Generate index.md content from hierarchy.
 
@@ -254,6 +255,7 @@ def generate_index_markdown(
         hierarchy: Nested issue hierarchy
         repo_name: Repository name (owner/repo format)
         drafts: Optional list of pending drafts
+        worktrees: Optional list of active worktrees
 
     Returns:
         Generated markdown content
@@ -275,6 +277,27 @@ def generate_index_markdown(
     else:
         for epic in epics:
             lines.extend(_format_epic(epic, repo_name))
+
+    lines.extend([
+        "",
+        "---",
+        "",
+        "## Active Worktrees",
+        "",
+    ])
+
+    if worktrees:
+        lines.append("| # | Branch | Status | Modified |")
+        lines.append("|---|--------|--------|----------|")
+        for wt in worktrees:
+            issue_num = wt.get("issue_number", "?")
+            branch = wt.get("branch", "unknown")
+            status_info = wt.get("status", {})
+            status = "dirty" if not status_info.get("is_clean", True) else "clean"
+            modified = len(status_info.get("modified_files", []))
+            lines.append(f"| #{issue_num} | `{branch}` | {status} | {modified} files |")
+    else:
+        lines.append("_No active worktrees. Start implementing with `/jcttech.implement`._")
 
     lines.extend([
         "",
@@ -303,6 +326,7 @@ def generate_index_markdown(
         f"last_full_sync: \"{now}\"",
         f"issues_cached: {_count_issues(hierarchy)}",
         f"drafts_pending: {len(drafts) if drafts else 0}",
+        f"active_worktrees: {len(worktrees) if worktrees else 0}",
         "```",
     ])
 
@@ -496,6 +520,27 @@ def cache_issue(project_path: Path, issue: dict) -> Path:
 
     cache_file.write_text("\n".join(content))
     return cache_file
+
+
+# =============================================================================
+# Worktree Integration
+# =============================================================================
+
+
+def get_worktree_info(project_path: Path) -> list[dict]:
+    """Get information about active worktrees.
+
+    Args:
+        project_path: Project root path
+
+    Returns:
+        List of worktree info dicts with issue linkage
+    """
+    try:
+        from jcttech.worktree_manager import list_worktrees
+        return list_worktrees(project_path)
+    except ImportError:
+        return []
 
 
 # =============================================================================

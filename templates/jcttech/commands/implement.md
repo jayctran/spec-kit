@@ -1,8 +1,8 @@
 ---
-description: Pull Story from GitHub, execute tasks, check off progress, update docs if needed
+description: Pull Story from GitHub, create worktree, execute tasks, create PR when complete
 tools: ['github/github-mcp-server/issue_read', 'github/github-mcp-server/issue_write']
 scripts:
-  sh: scripts/bash/jcttech/sync-issues.sh --json
+  sh: scripts/bash/jcttech/worktree-manager.sh --json
   ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly
 ---
 
@@ -14,65 +14,279 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+**Supported flags:**
+- `--auto-merge` - Enable SA/TL review and auto-merge after CI passes
+
 ## Overview
 
 This command implements a Story by:
-1. Pulling the Story issue from GitHub
-2. Working through each task checkbox
-3. Updating the issue as tasks complete
-4. Optionally updating architecture/decisions docs
+1. Creating/resuming a git worktree for isolated development
+2. Setting the Story status to `status:in-progress`
+3. Working through each task checkbox
+4. Updating the issue as tasks complete
+5. When all tasks complete, creating a PR with "Closes #NNN"
+6. Optionally performing SA/TL review and auto-merge (with `--auto-merge`)
+7. Cascade closing parent Spec/Epic when all children complete
 
 ## Outline
 
-1. **Select Story to implement**:
-   - If user provides Story number (e.g., "#102"), use that
-   - Otherwise, list open Stories from index:
-     ```bash
-     gh issue list --label type:story --state open --json number,title,assignees
-     ```
-   - Show Stories with their task counts
+### 1. Select Story to implement
 
-2. **Fetch Story details**:
+- If user provides Story number (e.g., "#102"), use that
+- Otherwise, list open Stories:
+  ```bash
+  gh issue list --label type:story --state open --json number,title,assignees,labels
+  ```
+- Show Stories with their task counts and current status labels
+
+### 2. Check for existing worktree
+
+```bash
+scripts/bash/jcttech/worktree-manager.sh --check {story_number}
+```
+
+**If worktree exists:**
+- Check worktree status (clean/dirty)
+- If dirty, show modified files and ask: "Resume with uncommitted changes? [Y/n]"
+- If clean, inform user: "Resuming Story #{number} in existing worktree"
+
+**If worktree does not exist:**
+- Proceed to create new worktree
+
+### 3. Create worktree (if new)
+
+```bash
+scripts/bash/jcttech/worktree-manager.sh --create {story_number} --title "{story_title}"
+```
+
+This will:
+- Generate branch name: `{story_number}-{slug}` (e.g., `102-jwt-token-service`)
+- Create worktree at: `worktrees/102-jwt-token-service/`
+- Base off main branch (or existing remote branch if continuing)
+
+### 4. Update Story status label
+
+```bash
+gh issue edit {story_number} --remove-label "status:draft" --add-label "status:in-progress"
+```
+
+### 5. Fetch Story details
+
+```bash
+gh issue view {story_number} --json number,title,body,state,labels
+```
+
+### 6. Parse tasks from Story body
+
+- Extract checkbox items: `- [ ] Task description`
+- Track which are already completed: `- [x] Done task`
+- Display task list to user
+
+### 7. Work through tasks sequentially
+
+**IMPORTANT: All file operations must occur within the worktree path**
+
+For each unchecked task:
+a. Display the task description
+b. Change to worktree directory for implementation
+c. Implement the task (write code, tests, etc.) **in the worktree**
+d. Commit changes in the worktree:
    ```bash
-   gh issue view {story_number} --json number,title,body,state,labels
+   cd {worktree_path} && git add . && git commit -m "Task: {task_description}"
+   ```
+e. After completing, update the GitHub issue:
+   ```bash
+   gh issue edit {story_number} --body "{updated_body_with_checked_task}"
+   ```
+f. Push changes:
+   ```bash
+   cd {worktree_path} && git push -u origin {branch_name}
    ```
 
-3. **Parse tasks from Story body**:
-   - Extract checkbox items: `- [ ] Task description`
-   - Track which are already completed: `- [x] Done task`
-   - Display task list to user
+### 8. Check for architecture changes
 
-4. **Work through tasks sequentially**:
+After implementation, ask:
+- Did implementation introduce new components?
+- Did implementation change data flow?
+- Were there decisions made during implementation?
 
-   For each unchecked task:
-   a. Display the task description
-   b. Implement the task (write code, tests, etc.)
-   c. After completing, update the GitHub issue:
-      ```bash
-      gh issue edit {story_number} --body "{updated_body_with_checked_task}"
-      ```
-   d. Optionally commit progress
+If yes to any:
+- Prompt to update `.docs/architecture.md`
+- Prompt to record decision with `/jcttech.decision`
 
-5. **Check for architecture changes**:
+### 9. When all tasks complete
 
-   After implementation, ask:
-   - Did implementation introduce new components?
-   - Did implementation change data flow?
-   - Were there decisions made during implementation?
+#### 9a. Create Pull Request
 
-   If yes to any:
-   - Prompt to update `.docs/architecture.md`
-   - Prompt to record decision with `/jcttech.decision`
+```bash
+cd {worktree_path} && gh pr create \
+  --title "[Story] {story_title}" \
+  --body "Closes #{story_number}
 
-6. **When all tasks complete**:
-   - Close the Story issue or change status label
-   - Update index via sync
-   - Report completion summary
+## Summary
+{summary_of_changes}
+
+## Tasks Completed
+{list_of_checked_tasks}
+
+## Parent Spec
+#{parent_spec_number}
+
+---
+_Generated by /jcttech.implement_" \
+  --label "type:story"
+```
+
+#### 9b. Update Story status
+
+```bash
+gh issue edit {story_number} --remove-label "status:in-progress" --add-label "status:in-review"
+```
+
+#### 9c. If `--auto-merge` flag is set
+
+Perform SA/TL Review before merging:
+
+**Story Alignment Check:**
+- Verify all Story tasks are implemented (checkboxes checked)
+- Verify acceptance criteria from Story description are met
+- Check for scope creep - implementation should match specification
+
+**Code Quality Check:**
+- Check for obvious security vulnerabilities (injection, XSS, exposed secrets)
+- Check for performance anti-patterns (N+1 queries, unbounded loops)
+- Verify code is maintainable (reasonable complexity, clear naming)
+- Verify appropriate error handling
+
+**Test Coverage Check:**
+- Verify tests exist for new functionality
+- Verify tests are meaningful (not just smoke tests)
+- Check that edge cases are considered
+
+**Review Output:**
+```
+SA/TL Review for PR #{pr_number} (Story #{story_number})
+
+Story Alignment: ✓ PASS / ✗ FAIL
+  - {N}/{total} tasks implemented
+  - Acceptance criteria: {status}
+
+Code Quality: ✓ PASS / ✗ FAIL
+  - Security: {status}
+  - Performance: {status}
+  - Maintainability: {status}
+
+Test Coverage: ✓ PASS / ✗ FAIL
+  - Tests added: {count}
+  - Edge cases: {status}
+
+CI Status: Checking...
+```
+
+**If review passes:**
+- Wait for CI to complete
+- If CI passes, execute: `gh pr merge {pr_number} --merge --auto`
+- Report: "AUTO-MERGE APPROVED - PR will merge when CI passes"
+
+**If review fails:**
+- Report specific issues found
+- PR remains open for manual intervention
+- Do NOT auto-merge
+
+#### 9d. Report completion
+
+```
+Story #{story_number} Implementation Complete!
+
+Summary:
+- {N}/{total} tasks completed
+- Files created: {count}
+- Files modified: {count}
+- Tests added: {count}
+
+PR Created: #{pr_number} ({pr_url})
+Story Status: in-review
+
+Worktree: worktrees/{branch_name}/
+(Worktree will be cleaned up after PR merge)
+
+{If auto-merge enabled:}
+SA/TL Review: PASSED
+Auto-merge: ENABLED - will merge when CI passes
+```
+
+### 10. Cascade Close Detection
+
+When a Story's PR is merged and the Story closes:
+
+```bash
+# Get parent Spec from Story body
+PARENT_SPEC=$(gh issue view {story_number} --json body -q '.body' | grep -oP 'Parent Spec:\s*#\K\d+')
+
+# Check if all Stories in parent Spec are closed
+OPEN_STORIES=$(gh issue list --label type:story --state open --json body \
+  -q "[.[] | select(.body | test(\"Parent Spec:\\\\s*#${PARENT_SPEC}\"; \"i\"))] | length")
+
+if [ "$OPEN_STORIES" -eq 0 ]; then
+  echo "All Stories in Spec #${PARENT_SPEC} complete - closing Spec"
+  gh issue close $PARENT_SPEC --comment "All Stories completed. Auto-closing Spec."
+
+  # Check parent Epic
+  PARENT_EPIC=$(gh issue view $PARENT_SPEC --json body -q '.body' | grep -oP 'Parent Epic:\s*#\K\d+')
+
+  if [ -n "$PARENT_EPIC" ]; then
+    OPEN_SPECS=$(gh issue list --label type:spec --state open --json body \
+      -q "[.[] | select(.body | test(\"Parent Epic:\\\\s*#${PARENT_EPIC}\"; \"i\"))] | length")
+
+    if [ "$OPEN_SPECS" -eq 0 ]; then
+      echo "All Specs in Epic #${PARENT_EPIC} complete - closing Epic"
+      gh issue close $PARENT_EPIC --comment "All Specs completed. Auto-closing Epic."
+    fi
+  fi
+fi
+```
+
+## Worktree Management
+
+The agent can use these utility commands:
+
+### List active worktrees
+```bash
+scripts/bash/jcttech/worktree-manager.sh --list
+```
+
+Output:
+```json
+[
+  {"issue_number": 102, "branch": "102-jwt-token-service", "path": "worktrees/102-jwt-token-service", "status": "dirty", "modified_count": 3},
+  {"issue_number": 103, "branch": "103-login-endpoint", "path": "worktrees/103-login-endpoint", "status": "clean"}
+]
+```
+
+### Get worktree status
+```bash
+scripts/bash/jcttech/worktree-manager.sh --status {issue_number}
+```
+
+### Cleanup worktree (after PR merge)
+```bash
+scripts/bash/jcttech/worktree-manager.sh --cleanup {issue_number}
+```
+
+## Status Labels
+
+| Label | Meaning | Set By |
+|-------|---------|--------|
+| `status:draft` | Story created, not started | /jcttech.plan |
+| `status:in-progress` | Worktree active, tasks being implemented | /jcttech.implement (start) |
+| `status:blocked` | Implementation blocked | Manual |
+| `status:in-review` | PR created, awaiting merge | /jcttech.implement (complete) |
 
 ## Task Workflow Example
 
 ```
 Story #102: Implement JWT Token Service
+Worktree: worktrees/102-jwt-token-service/
 
 Tasks:
 [1/4] - [ ] Create JWTService class with sign/verify methods
@@ -82,72 +296,67 @@ Tasks:
 
 Current task: Create JWTService class with sign/verify methods
 
-Working on this task...
-[Implementation happens]
+Working in worktree: /project/worktrees/102-jwt-token-service/
+[Implementation happens in worktree]
 
-Task complete! Updating GitHub issue...
-✓ Task 1/4 checked off
+Task complete!
+✓ Committed: "Task: Create JWTService class with sign/verify methods"
+✓ Pushed to origin/102-jwt-token-service
+✓ GitHub issue updated - Task 1/4 checked off
 
 Continue to next task? [Y/n]
 ```
 
-## GitHub Issue Update
+## Error Handling
 
-When checking off a task, the issue body is updated:
+### Worktree already exists with dirty state
+```
+Warning: Worktree for Story #102 has uncommitted changes:
+  - src/auth.ts (modified)
+  - src/utils.ts (modified)
 
-Before:
-```markdown
-## Tasks
-- [ ] Create JWTService class
-- [ ] Add token validation middleware
+Options:
+1. Resume with current changes [r]
+2. Stash changes and continue [s]
+3. Abort [a]
+
+Choice:
 ```
 
-After:
-```markdown
-## Tasks
-- [x] Create JWTService class
-- [ ] Add token validation middleware
+### Branch conflict
+```
+Error: Branch 102-jwt-token-service already exists and has diverged from main.
+
+Options:
+1. Rebase onto main [r]
+2. Continue with current branch [c]
+3. Create new branch with suffix [n]
+4. Abort [a]
+
+Choice:
 ```
 
-## Documentation Updates
-
-At the end of implementation (or periodically), check if docs need updates:
-
-1. **Architecture changes detected?**
-   - New files in unexpected locations
-   - New service classes
-   - New API endpoints
-   → Offer to update `.docs/architecture.md`
-
-2. **Decisions made?**
-   - Library choices
-   - Design pattern choices
-   - Trade-off decisions
-   → Offer to run `/jcttech.decision`
-
-3. **Implementation differs from plan?**
-   - Compare actual implementation with Story description
-   → Note differences in architecture.md
-
-## Completion
-
-When Story is complete:
+### SA/TL Review Failure (auto-merge mode)
 ```
-Story #102 Complete!
+SA/TL Review for PR #105 (Story #102)
 
-Summary:
-- 4/4 tasks completed
-- Files created: 3
-- Files modified: 2
-- Tests added: 12
+Story Alignment: ✓ PASS
+Code Quality: ✗ FAIL
+  - Security: ISSUE FOUND
+    Line 45: Potential SQL injection in user query
+Test Coverage: ✓ PASS
 
-Documentation:
-- architecture.md: Updated with AuthService component
-- decisions.md: ADR-003 added (jose library choice)
+Decision: AUTO-MERGE BLOCKED
+Reason: Code quality issues detected
 
-Story #102 marked as closed.
+The PR has been created but will NOT be auto-merged.
+Please address the issues above and request manual review.
+```
 
-Next Stories in Spec #101:
-- #103 [Story] Create Login Endpoint (3 tasks)
-- #104 [Story] Add Token Refresh Flow (3 tasks)
+### Cascade close not triggered
+```
+Note: Story #102 closed but Spec #101 remains open.
+Remaining Stories:
+- #103 [Story] Create Login Endpoint (2/3 tasks) - in-progress
+- #104 [Story] Add Token Refresh Flow (0/3 tasks) - draft
 ```

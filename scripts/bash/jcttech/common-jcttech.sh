@@ -126,3 +126,46 @@ has_index() {
 get_iso_timestamp() {
     date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z
 }
+
+# Get worktrees directory path
+get_worktrees_path() {
+    local repo_root=$(get_repo_root)
+    echo "$repo_root/worktrees"
+}
+
+# Ensure worktrees directory is in .gitignore
+ensure_worktrees_gitignore() {
+    local repo_root=$(get_repo_root)
+    local gitignore="$repo_root/.gitignore"
+
+    if ! grep -q "^worktrees/$" "$gitignore" 2>/dev/null; then
+        echo "worktrees/" >> "$gitignore"
+    fi
+}
+
+# Get issue number from branch name
+# Usage: get_issue_from_branch "102-jwt-token-service"
+# Returns: 102
+get_issue_from_branch() {
+    local branch="$1"
+    echo "$branch" | grep -oP '^\d+' || echo ""
+}
+
+# Check if worktree exists for an issue
+# Usage: has_worktree 102
+has_worktree() {
+    local issue_number="$1"
+    local worktrees_dir="$(get_worktrees_path)"
+
+    if [[ ! -d "$worktrees_dir" ]]; then
+        return 1
+    fi
+
+    for dir in "$worktrees_dir"/${issue_number}-*/; do
+        if [[ -d "$dir" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}

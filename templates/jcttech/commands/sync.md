@@ -34,18 +34,28 @@ This command synchronizes the local `.docs/issues-index.md` with GitHub Issues. 
    {SCRIPT}
    ```
 
-3. **Display sync results**:
+3. **Sync active worktrees**:
+   ```bash
+   scripts/bash/jcttech/worktree-manager.sh --list
+   ```
+   - Detect active worktrees for Stories in progress
+   - Include worktree status (clean/dirty, modified file count)
+
+4. **Display sync results**:
    - Number of issues fetched by type
    - Any new issues since last sync
    - Any issues that changed state
+   - Active worktrees and their status
 
-4. **Report conflicts** if any:
+5. **Report conflicts** if any:
    - Local drafts that match pushed issues
    - Issues modified externally
+   - Worktrees with unpushed changes
 
-5. **Show sync summary**:
+6. **Show sync summary**:
    - Last sync timestamp
    - Total issues cached
+   - Active worktrees count
    - Index file location
 
 ## What Gets Synced
@@ -57,6 +67,7 @@ This command synchronizes the local `.docs/issues-index.md` with GitHub Issues. 
 | GitHub Issues (type:story) | issues-index.md hierarchy + cache |
 | GitHub Issues (type:task) | issues-index.md hierarchy + cache |
 | GitHub Issues (type:bug) | issues-index.md hierarchy + cache |
+| Local worktrees | issues-index.md Active Worktrees section |
 
 ## Index Structure After Sync
 
@@ -84,6 +95,14 @@ This command synchronizes the local `.docs/issues-index.md` with GitHub Issues. 
 
 ---
 
+## Active Worktrees
+
+| # | Branch | Status | Modified |
+|---|--------|--------|----------|
+| #102 | `102-jwt-token-service` | dirty | 3 files |
+
+---
+
 ## Drafts (Not Yet Pushed)
 | Draft | Type | Ready |
 |-------|------|-------|
@@ -96,6 +115,7 @@ sync_version: 1
 last_full_sync: "2026-01-15T14:30:00Z"
 issues_cached: 15
 drafts_pending: 1
+active_worktrees: 1
 ```
 
 ## Cache Structure
@@ -125,6 +145,10 @@ Fetched from owner/repo:
 - Stories: 12
 - Tasks: 0 (tasks are checkboxes, not issues)
 - Bugs: 3
+
+Active worktrees:
+- #102 102-jwt-token-service (dirty, 3 modified)
+- #103 103-login-endpoint (clean)
 
 New since last sync:
 - #115 [Story] Add OAuth Integration

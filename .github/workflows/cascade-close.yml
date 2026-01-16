@@ -1,0 +1,83 @@
+name: Cascade Close Issues
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cascade-close:
+    # Only run when PR is merged (not just closed)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: Check for "Closes #" references
+        id: find_issues
+        run: |
+          BODY="${{ github.event.pull_request.body }}"
+          # Extract issue numbers from "Closes #N" pattern
+          ISSUES=$(echo "$BODY" | grep -oP 'Closes\s+#\K\d+' | tr '\n' ' ' | xargs)
+          echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+          echo "Found issues to close: $ISSUES"
+
+      - name: Cascade close check
+        if: steps.find_issues.outputs.issues != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for ISSUE in ${{ steps.find_issues.outputs.issues }}; do
+            echo "Processing issue #$ISSUE"
+
+            # Check issue type via labels
+            LABELS=$(gh issue view $ISSUE --json labels -q '.labels[].name' 2>/dev/null || echo "")
+
+            if echo "$LABELS" | grep -q "type:story"; then
+              echo "Issue #$ISSUE is a Story - checking for cascade close"
+
+              # Get parent Spec from issue body
+              BODY=$(gh issue view $ISSUE --json body -q '.body' 2>/dev/null || echo "")
+              PARENT_SPEC=$(echo "$BODY" | grep -oP 'Parent Spec:\s*#\K\d+' || echo "")
+
+              if [ -n "$PARENT_SPEC" ]; then
+                echo "Parent Spec: #$PARENT_SPEC"
+
+                # Count remaining open Stories under this Spec
+                OPEN_COUNT=$(gh issue list --label type:story --state open --json body \
+                  -q "[.[] | select(.body | test(\"Parent Spec:\\\\s*#$PARENT_SPEC\"; \"i\"))] | length" 2>/dev/null || echo "0")
+
+                echo "Open Stories under Spec #$PARENT_SPEC: $OPEN_COUNT"
+
+                if [ "$OPEN_COUNT" = "0" ]; then
+                  echo "All Stories complete - closing Spec #$PARENT_SPEC"
+                  gh issue close $PARENT_SPEC --comment "All Stories completed. Auto-closing." 2>/dev/null || true
+
+                  # Check parent Epic
+                  SPEC_BODY=$(gh issue view $PARENT_SPEC --json body -q '.body' 2>/dev/null || echo "")
+                  PARENT_EPIC=$(echo "$SPEC_BODY" | grep -oP 'Parent Epic:\s*#\K\d+' || echo "")
+
+                  if [ -n "$PARENT_EPIC" ]; then
+                    echo "Parent Epic: #$PARENT_EPIC"
+
+                    OPEN_SPECS=$(gh issue list --label type:spec --state open --json body \
+                      -q "[.[] | select(.body | test(\"Parent Epic:\\\\s*#$PARENT_EPIC\"; \"i\"))] | length" 2>/dev/null || echo "0")
+
+                    echo "Open Specs under Epic #$PARENT_EPIC: $OPEN_SPECS"
+
+                    if [ "$OPEN_SPECS" = "0" ]; then
+                      echo "All Specs complete - closing Epic #$PARENT_EPIC"
+                      gh issue close $PARENT_EPIC --comment "All Specs completed. Auto-closing." 2>/dev/null || true
+                    fi
+                  fi
+                else
+                  echo "Spec #$PARENT_SPEC still has $OPEN_COUNT open Stories"
+                fi
+              else
+                echo "No parent Spec found for Story #$ISSUE"
+              fi
+            else
+              echo "Issue #$ISSUE is not a Story (labels: $LABELS) - skipping cascade check"
+            fi
+          done
