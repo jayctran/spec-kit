@@ -73,8 +73,14 @@ All issues should be added to a GitHub Project for tracking:
 ```yaml
 # Configure in .specify/config.yml
 github:
-  project: "PROJECT_NUMBER_OR_URL"  # e.g., "5" or "https://github.com/orgs/myorg/projects/5"
+  project: "PROJECT_NUMBER"
+  owner: "OWNER_NAME"
+  owner_type: "user|organization"
 ```
+
+Use `/jcttech.setup-project` to automatically configure your GitHub Project with:
+- **Status columns**: Inbox, Triaged, Planned, In Progress, In Review, Done
+- **Custom fields**: Type, Area, Effort, Priority
 
 When creating issues, the `/jcttech.*` commands will automatically add them to this project.
 
@@ -86,6 +92,56 @@ Ensure these custom Issue Types are configured in your repository settings:
 - Story
 - Bug
 - Task
+- Idea
+
+### Backlog Workflow
+
+Ideas (backlog items) flow through the project board differently from planned work:
+
+```
+/jcttech.idea ──► Idea (Inbox)
+                      │
+/jcttech.triage ──────┤──► Set effort/priority (Triaged)
+                      │
+                      └──► Promote to Spec ──► Normal Epic→Spec→Story flow
+```
+
+**Key concepts:**
+- **Ideas** can be created without a parent (exception to hierarchy rules)
+- **Inbox** contains new, uncategorized backlog items
+- **Triaged** contains items with effort/priority set, awaiting planning
+- **Promote** converts an Idea to a proper Spec under an Epic
+
+Use `/jcttech.triage` to periodically review and prioritize backlog items.
+
+### Backlog Labels
+
+The following labels are used for backlog management:
+
+**Status:**
+- `backlog` - Identifies item as unplanned/future work
+
+**Area:**
+- `area:architecture` - System design, patterns
+- `area:tech-debt` - Code cleanup, maintenance
+- `area:enhancement` - New features, improvements
+- `area:performance` - Speed, efficiency
+- `area:security` - Auth, permissions
+- `area:ux` - User experience, UI
+- `area:other` - Miscellaneous
+
+**Effort:**
+- `effort:xs` - Less than 2 hours
+- `effort:s` - 2-4 hours
+- `effort:m` - 1-2 days
+- `effort:l` - 3-5 days
+- `effort:xl` - 1-2 weeks
+
+**Priority:**
+- `priority:critical` - Must do immediately
+- `priority:high` - Important, schedule soon
+- `priority:medium` - Normal priority
+- `priority:low` - Nice to have
 
 ## Issue Workflow
 
@@ -99,6 +155,9 @@ Epic (strategic initiative)
         └── Story (implementable unit)
               └── Tasks (checkboxes in Story)
               └── Bugs (can also attach to Spec/Epic)
+
+Idea (backlog item - no parent required)
+  └── Can be promoted to Spec via /jcttech.triage
 ```
 
 ### Naming Conventions
@@ -107,6 +166,7 @@ Epic (strategic initiative)
 - **Spec**: `[Spec] Feature Name`
 - **Story**: `[Story] User-Facing Action`
 - **Bug**: `[Bug] Brief Description`
+- **Idea**: `[Idea] Brief Description`
 
 ### Issue Types
 
@@ -116,6 +176,7 @@ All issues use GitHub's native Type field:
 - **Spec**: Technical specifications
 - **Story**: Implementable work units
 - **Bug**: Defects and regressions
+- **Idea**: Backlog items (unplanned work)
 
 Additional labels (priority, status, area) can be applied as needed.
 

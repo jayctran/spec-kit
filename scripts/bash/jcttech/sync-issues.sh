@@ -59,6 +59,7 @@ SPECS=$(fetch_issues_by_type "Spec")
 STORIES=$(fetch_issues_by_type "Story")
 TASKS=$(fetch_issues_by_type "Task")
 BUGS=$(fetch_issues_by_type "Bug")
+IDEAS=$(fetch_issues_by_type "Idea")
 
 # Count issues
 EPIC_COUNT=$(echo "$EPICS" | jq 'length')
@@ -66,9 +67,10 @@ SPEC_COUNT=$(echo "$SPECS" | jq 'length')
 STORY_COUNT=$(echo "$STORIES" | jq 'length')
 TASK_COUNT=$(echo "$TASKS" | jq 'length')
 BUG_COUNT=$(echo "$BUGS" | jq 'length')
-TOTAL_COUNT=$((EPIC_COUNT + SPEC_COUNT + STORY_COUNT + TASK_COUNT + BUG_COUNT))
+IDEA_COUNT=$(echo "$IDEAS" | jq 'length')
+TOTAL_COUNT=$((EPIC_COUNT + SPEC_COUNT + STORY_COUNT + TASK_COUNT + BUG_COUNT + IDEA_COUNT))
 
-$VERBOSE && echo "Found: $EPIC_COUNT epics, $SPEC_COUNT specs, $STORY_COUNT stories, $TASK_COUNT tasks, $BUG_COUNT bugs"
+$VERBOSE && echo "Found: $EPIC_COUNT epics, $SPEC_COUNT specs, $STORY_COUNT stories, $TASK_COUNT tasks, $BUG_COUNT bugs, $IDEA_COUNT ideas"
 
 # Generate new index.md
 TIMESTAMP=$(get_iso_timestamp)
@@ -106,6 +108,34 @@ EOF
         done
     else
         echo "_No issues tracked yet. Use \`/jcttech.epic\` to create your first epic._"
+    fi
+
+    cat << EOF
+
+---
+
+## Backlog (Ideas)
+
+EOF
+
+    # Process ideas
+    if [[ "$IDEA_COUNT" -gt 0 ]]; then
+        echo "| # | Title | Area | Effort | Priority | Status |"
+        echo "|---|-------|------|--------|----------|--------|"
+
+        echo "$IDEAS" | jq -r '.[] |
+            # Extract area from labels
+            ((.labels // []) | map(select(.name | startswith("area:"))) | .[0].name // "-" | sub("area:"; "")) as $area |
+            # Extract effort from labels
+            ((.labels // []) | map(select(.name | startswith("effort:"))) | .[0].name // "-" | sub("effort:"; "")) as $effort |
+            # Extract priority from labels
+            ((.labels // []) | map(select(.name | startswith("priority:"))) | .[0].name // "-" | sub("priority:"; "")) as $priority |
+            # Check if triaged (has effort or priority)
+            (if $effort != "-" or $priority != "-" then "triaged" else "inbox" end) as $status |
+            "| #\(.number) | [\(.title)](https://github.com/'$REPO'/issues/\(.number)) | \($area) | \($effort) | \($priority) | \($status) |"
+        '
+    else
+        echo "_No backlog items. Use \`/jcttech.idea\` to capture ideas._"
     fi
 
     cat << EOF
@@ -193,6 +223,7 @@ cache_issues "$SPECS" "spec"
 cache_issues "$STORIES" "story"
 cache_issues "$TASKS" "task"
 cache_issues "$BUGS" "bug"
+cache_issues "$IDEAS" "idea"
 
 # Output result
 if $JSON_MODE; then
@@ -206,6 +237,7 @@ if $JSON_MODE; then
   "stories": ${STORY_COUNT},
   "tasks": ${TASK_COUNT},
   "bugs": ${BUG_COUNT},
+  "ideas": ${IDEA_COUNT},
   "total": ${TOTAL_COUNT}
 }
 EOF

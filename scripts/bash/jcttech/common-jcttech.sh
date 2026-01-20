@@ -169,3 +169,130 @@ has_worktree() {
 
     return 1
 }
+
+# Get the .specify/config.yml path
+get_config_path() {
+    local repo_root=$(get_repo_root)
+    echo "$repo_root/.specify/config.yml"
+}
+
+# Get the .specify/project-fields.yml path
+get_fields_cache_path() {
+    local repo_root=$(get_repo_root)
+    echo "$repo_root/.specify/project-fields.yml"
+}
+
+# Get project number from config
+# Usage: get_project_number
+get_project_number() {
+    local config_file="$(get_config_path)"
+    if [[ -f "$config_file" ]]; then
+        grep "project:" "$config_file" 2>/dev/null | sed 's/.*project: *//' | tr -d '"' | tr -d "'"
+    else
+        echo ""
+    fi
+}
+
+# Get project owner from config
+# Usage: get_project_owner
+get_project_owner() {
+    local config_file="$(get_config_path)"
+    if [[ -f "$config_file" ]]; then
+        grep "owner:" "$config_file" 2>/dev/null | head -1 | sed 's/.*owner: *//' | tr -d '"' | tr -d "'"
+    else
+        echo ""
+    fi
+}
+
+# Get project field ID from cache
+# Usage: get_project_field_id "status"
+get_project_field_id() {
+    local field_name="$1"
+    local fields_file="$(get_fields_cache_path)"
+
+    if [[ -f "$fields_file" ]]; then
+        # Parse YAML to get field ID (simple grep-based parsing)
+        awk -v field="$field_name:" '
+            $0 ~ field {found=1; next}
+            found && /id:/ {gsub(/.*id: *"?|"?$/, ""); print; exit}
+        ' "$fields_file"
+    else
+        echo ""
+    fi
+}
+
+# Get project field option ID from cache
+# Usage: get_project_field_option_id "status" "inbox"
+get_project_field_option_id() {
+    local field_name="$1"
+    local option_name="$2"
+    local fields_file="$(get_fields_cache_path)"
+
+    if [[ -f "$fields_file" ]]; then
+        # Parse YAML to get option ID (simple grep-based parsing)
+        awk -v field="$field_name:" -v option="$option_name:" '
+            $0 ~ field {in_field=1; next}
+            in_field && /^  [a-z]/ && !/:$/ {in_field=0}
+            in_field && $0 ~ option {gsub(/.*: *"?|"?$/, ""); print; exit}
+        ' "$fields_file"
+    else
+        echo ""
+    fi
+}
+
+# Check if issue type can exist without a parent
+# Usage: is_orphan_allowed "Idea"
+# Returns: 0 (true) if orphan allowed, 1 (false) otherwise
+is_orphan_allowed() {
+    local issue_type="$1"
+
+    case "$issue_type" in
+        Epic|Idea)
+            return 0  # Epics and Ideas can be orphans
+            ;;
+        *)
+            return 1  # All other types need parents
+            ;;
+    esac
+}
+
+# Add issue to project with optional status
+# Usage: add_to_project "123" "inbox"
+add_to_project() {
+    local issue_number="$1"
+    local status="${2:-}"
+    local project_num=$(get_project_number)
+    local owner=$(get_project_owner)
+
+    if [[ -z "$project_num" || -z "$owner" ]]; then
+        echo "WARNING: Project not configured. Run /jcttech.setup-project first." >&2
+        return 1
+    fi
+
+    # Add to project using gh CLI
+    gh project item-add "$project_num" --owner "$owner" --url "$(gh repo view --json url -q '.url')/issues/$issue_number" 2>/dev/null || true
+
+    # If status specified, try to set it (requires project field IDs)
+    if [[ -n "$status" ]]; then
+        local status_field_id=$(get_project_field_id "status")
+        local status_option_id=$(get_project_field_option_id "status" "$status")
+
+        if [[ -n "$status_field_id" && -n "$status_option_id" ]]; then
+            # Get the project item ID first
+            local item_id=$(gh project item-list "$project_num" --owner "$owner" --format json | \
+                jq -r ".items[] | select(.content.number == $issue_number) | .id" 2>/dev/null)
+
+            if [[ -n "$item_id" ]]; then
+                gh project item-edit --project-id "$project_num" --id "$item_id" \
+                    --field-id "$status_field_id" --single-select-option-id "$status_option_id" 2>/dev/null || true
+            fi
+        fi
+    fi
+}
+
+# Add issue to project Inbox column
+# Usage: add_to_project_inbox "123"
+add_to_project_inbox() {
+    local issue_number="$1"
+    add_to_project "$issue_number" "inbox"
+}
