@@ -213,6 +213,17 @@ EOF
     cp templates/jcttech/docs/*.md "$docs_templates_dir/" 2>/dev/null || true
     echo "    Copied doc templates"
   fi
+
+  # Copy JCT Tech workflows to .specify/workflows/ for deployment via project-setup
+  if [[ -d templates/jcttech/workflows ]]; then
+    local workflows_dir="$package_dir/.specify/workflows"
+    mkdir -p "$workflows_dir"
+    for wf in templates/jcttech/workflows/*.yml; do
+      [[ -f "$wf" ]] || continue
+      cp "$wf" "$workflows_dir/"
+      echo "    Copied workflow: $(basename "$wf")"
+    done
+  fi
 }
 
 # Find all generated packages and enhance them

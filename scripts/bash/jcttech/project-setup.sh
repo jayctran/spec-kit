@@ -13,6 +13,7 @@ PROJECT_NUMBER=""
 CREATE_NAME=""
 ADD_STATUS_OPTIONS=false
 CREATE_FIELDS=false
+DEPLOY_WORKFLOWS=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -34,6 +35,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --create-fields)
             CREATE_FIELDS=true
+            shift
+            ;;
+        --deploy-workflows)
+            DEPLOY_WORKFLOWS=true
             shift
             ;;
         *)
@@ -328,8 +333,41 @@ FIELDS_JSON=$(get_all_fields "$PROJECT_ID")
 save_config "$PROJECT_NUMBER" "$OWNER" "$OWNER_TYPE"
 save_fields_cache "$PROJECT_ID" "$FIELDS_JSON"
 
+# Deploy GitHub Actions workflows if requested
+WORKFLOWS_DEPLOYED=()
+if $DEPLOY_WORKFLOWS; then
+    echo ""
+    echo "Deploying GitHub Actions workflows..."
+
+    WORKFLOW_SOURCE="$REPO_ROOT/.specify/workflows"
+    WORKFLOW_DEST="$REPO_ROOT/.github/workflows"
+
+    if [[ -d "$WORKFLOW_SOURCE" ]]; then
+        mkdir -p "$WORKFLOW_DEST"
+        for wf in "$WORKFLOW_SOURCE"/*.yml; do
+            [[ -f "$wf" ]] || continue
+            local_name=$(basename "$wf")
+            if [[ -f "$WORKFLOW_DEST/$local_name" ]]; then
+                echo "  Skipping $local_name (already exists)"
+            else
+                cp "$wf" "$WORKFLOW_DEST/$local_name"
+                echo "  Deployed: $local_name"
+                WORKFLOWS_DEPLOYED+=("$local_name")
+            fi
+        done
+    else
+        echo "  No workflow templates found at $WORKFLOW_SOURCE"
+    fi
+fi
+
 # Output result
 if $JSON_MODE; then
+    # Build workflows array for JSON output
+    WORKFLOWS_JSON="[]"
+    if [ ${#WORKFLOWS_DEPLOYED[@]} -gt 0 ]; then
+        WORKFLOWS_JSON=$(printf '%s\n' "${WORKFLOWS_DEPLOYED[@]}" | jq -R . | jq -s .)
+    fi
+
     cat << EOF
 {
   "project_number": "$PROJECT_NUMBER",
@@ -337,7 +375,8 @@ if $JSON_MODE; then
   "owner": "$OWNER",
   "owner_type": "$OWNER_TYPE",
   "config_file": "$CONFIG_FILE",
-  "fields_file": "$FIELDS_FILE"
+  "fields_file": "$FIELDS_FILE",
+  "workflows_deployed": $WORKFLOWS_JSON
 }
 EOF
 else
@@ -347,6 +386,9 @@ else
     echo "  Owner: $OWNER ($OWNER_TYPE)"
     echo "  Config: $CONFIG_FILE"
     echo "  Fields: $FIELDS_FILE"
+    if [ ${#WORKFLOWS_DEPLOYED[@]} -gt 0 ]; then
+        echo "  Workflows deployed: ${WORKFLOWS_DEPLOYED[*]}"
+    fi
     echo ""
     echo "Note: Custom fields (Type, Area, Effort, Priority) should be created"
     echo "manually in the GitHub Project settings, or they will use labels instead."

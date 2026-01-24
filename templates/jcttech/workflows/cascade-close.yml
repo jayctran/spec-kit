@@ -1,0 +1,105 @@
+name: Cascade Close Issues
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cascade-close:
+    # Only run when PR is merged (not just closed)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: Check for "Closes #" references
+        id: find_issues
+        run: |
+          BODY="${{ github.event.pull_request.body }}"
+          # Extract issue numbers from "Closes #N" pattern
+          ISSUES=$(echo "$BODY" | grep -oP 'Closes\s+#\K\d+' | tr '\n' ' ' | xargs)
+          echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+          echo "Found issues to close: $ISSUES"
+
+      - name: Cascade close check
+        if: steps.find_issues.outputs.issues != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for ISSUE in ${{ steps.find_issues.outputs.issues }}; do
+            echo "Processing issue #$ISSUE"
+
+            # Check issue type via native Type field
+            ISSUE_TYPE=$(gh issue view $ISSUE --json type -q '.type.name' 2>/dev/null || echo "")
+            if [ "$ISSUE_TYPE" = "Story" ]; then
+              echo "Issue #$ISSUE is a Story - checking for cascade close"
+
+              # Get parent Spec from native GitHub relationship
+              PARENT_SPEC=$(gh issue view $ISSUE --json parent -q '.parent.number' 2>/dev/null || echo "")
+
+              # Fallback to body parsing for backwards compatibility
+              if [ -z "$PARENT_SPEC" ]; then
+                BODY=$(gh issue view $ISSUE --json body -q '.body' 2>/dev/null || echo "")
+                PARENT_SPEC=$(echo "$BODY" | grep -oP 'Parent Spec:\s*#\K\d+' || echo "")
+              fi
+
+              if [ -n "$PARENT_SPEC" ]; then
+                echo "Parent Spec: #$PARENT_SPEC"
+
+                # Count remaining open Stories under this Spec using native parent
+                OPEN_COUNT=$(gh issue list --type Story --state open --json number,parent \
+                  -q "[.[] | select(.parent.number == $PARENT_SPEC)] | length" 2>/dev/null || echo "0")
+
+                # Fallback to body parsing for backwards compatibility
+                if [ "$OPEN_COUNT" = "0" ]; then
+                  OPEN_COUNT=$(gh issue list --type Story --state open --json body \
+                    -q "[.[] | select(.body | test(\"Parent Spec:\\\\s*#$PARENT_SPEC\"; \"i\"))] | length" 2>/dev/null || echo "0")
+                fi
+
+                echo "Open Stories under Spec #$PARENT_SPEC: $OPEN_COUNT"
+
+                if [ "$OPEN_COUNT" = "0" ]; then
+                  echo "All Stories complete - closing Spec #$PARENT_SPEC"
+                  gh issue close $PARENT_SPEC --comment "All Stories completed. Auto-closing." 2>/dev/null || true
+
+                  # Check parent Epic using native relationship
+                  PARENT_EPIC=$(gh issue view $PARENT_SPEC --json parent -q '.parent.number' 2>/dev/null || echo "")
+
+                  # Fallback to body parsing for backwards compatibility
+                  if [ -z "$PARENT_EPIC" ]; then
+                    SPEC_BODY=$(gh issue view $PARENT_SPEC --json body -q '.body' 2>/dev/null || echo "")
+                    PARENT_EPIC=$(echo "$SPEC_BODY" | grep -oP 'Parent Epic:\s*#\K\d+' || echo "")
+                  fi
+
+                  if [ -n "$PARENT_EPIC" ]; then
+                    echo "Parent Epic: #$PARENT_EPIC"
+
+                    # Count open Specs using native parent relationship
+                    OPEN_SPECS=$(gh issue list --type Spec --state open --json number,parent \
+                      -q "[.[] | select(.parent.number == $PARENT_EPIC)] | length" 2>/dev/null || echo "0")
+
+                    # Fallback to body parsing for backwards compatibility
+                    if [ "$OPEN_SPECS" = "0" ]; then
+                      OPEN_SPECS=$(gh issue list --type Spec --state open --json body \
+                        -q "[.[] | select(.body | test(\"Parent Epic:\\\\s*#$PARENT_EPIC\"; \"i\"))] | length" 2>/dev/null || echo "0")
+                    fi
+
+                    echo "Open Specs under Epic #$PARENT_EPIC: $OPEN_SPECS"
+
+                    if [ "$OPEN_SPECS" = "0" ]; then
+                      echo "All Specs complete - closing Epic #$PARENT_EPIC"
+                      gh issue close $PARENT_EPIC --comment "All Specs completed. Auto-closing." 2>/dev/null || true
+                    fi
+                  fi
+                else
+                  echo "Spec #$PARENT_SPEC still has $OPEN_COUNT open Stories"
+                fi
+              else
+                echo "No parent Spec found for Story #$ISSUE"
+              fi
+            else
+              echo "Issue #$ISSUE is not a Story (type: $ISSUE_TYPE) - skipping cascade check"
+            fi
+          done

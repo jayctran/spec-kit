@@ -2,7 +2,7 @@
 description: Auto-configure GitHub Project board
 tools: ['github/github-mcp-server/project_write']
 scripts:
-  sh: scripts/bash/jcttech/project-setup.sh --json
+  sh: scripts/bash/jcttech/project-setup.sh --json --deploy-workflows
   ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly
 ---
 
@@ -255,9 +255,25 @@ This will:
 - Update Status options if needed
 - Save configuration locally
 
+## Workflow Deployment
+
+By default, this command deploys GitHub Actions workflows to automate spec-driven development:
+
+- **cascade-close.yml**: Auto-closes parent Specs/Epics when all child issues are completed
+- **idea-state-sync.yml**: Syncs Idea status based on Spec/Story lifecycle events
+
+Workflows are deployed to `.github/workflows/` from `.specify/workflows/`.
+
+To skip workflow deployment:
+```bash
+{SCRIPT} --project 5
+```
+
+Without the `--deploy-workflows` flag (which is included by default in this command).
+
 ## Notes
 
 - **Organization projects**: Requires appropriate permissions on the org
 - **User projects**: Works with personal repositories
 - **Field IDs**: Cached locally for performance; re-run setup if fields change
-- **Idempotent**: Safe to run multiple times; won't duplicate fields
+- **Idempotent**: Safe to run multiple times; won't duplicate fields or workflows

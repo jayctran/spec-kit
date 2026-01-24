@@ -1,0 +1,219 @@
+name: Idea State Sync
+
+on:
+  issues:
+    types: [opened, edited, labeled, closed]
+
+permissions:
+  issues: write
+  contents: read
+  repository-projects: write
+
+jobs:
+  sync-idea-state:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout for config access
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .specify
+
+      - name: Determine event context
+        id: context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUM="${{ github.event.issue.number }}"
+          ISSUE_TYPE=$(gh issue view $ISSUE_NUM --json type -q '.type.name' 2>/dev/null || echo "")
+          ACTION="${{ github.event.action }}"
+          LABEL="${{ github.event.label.name }}"
+
+          echo "issue_type=$ISSUE_TYPE" >> $GITHUB_OUTPUT
+          echo "action=$ACTION" >> $GITHUB_OUTPUT
+          echo "label=$LABEL" >> $GITHUB_OUTPUT
+          echo "Issue #$ISSUE_NUM is type: $ISSUE_TYPE, action: $ACTION, label: $LABEL"
+
+      - name: Spec created/edited - Update Ideas to planned
+        if: steps.context.outputs.issue_type == 'Spec' && (steps.context.outputs.action == 'opened' || steps.context.outputs.action == 'edited')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUM="${{ github.event.issue.number }}"
+          echo "Processing Spec #$ISSUE_NUM for Related Backlog Items..."
+
+          # Get the Spec body
+          BODY=$(gh issue view $ISSUE_NUM --json body -q '.body' 2>/dev/null || echo "")
+
+          # Extract issue numbers from "Related Backlog Items" table
+          # Look for lines containing | #NNN | pattern after the section header
+          RELATED_IDEAS=$(echo "$BODY" | awk '
+            /^## Related Backlog Items/ { in_section=1; next }
+            /^## / && in_section { exit }
+            in_section && /\| *#[0-9]+ *\|/ {
+              match($0, /#([0-9]+)/, arr)
+              if (arr[1] != "") print arr[1]
+            }
+          ')
+
+          if [ -z "$RELATED_IDEAS" ]; then
+            echo "No Related Backlog Items found in Spec body"
+            exit 0
+          fi
+
+          echo "Found related Ideas: $RELATED_IDEAS"
+
+          for IDEA_NUM in $RELATED_IDEAS; do
+            # Verify it's actually an Idea type
+            IDEA_TYPE=$(gh issue view $IDEA_NUM --json type -q '.type.name' 2>/dev/null || echo "")
+            if [ "$IDEA_TYPE" = "Idea" ]; then
+              echo "Updating Idea #$IDEA_NUM status to 'planned'"
+
+              # Add status:planned label (remove other status labels first)
+              gh issue edit $IDEA_NUM --remove-label "status:triaged" 2>/dev/null || true
+              gh issue edit $IDEA_NUM --remove-label "status:inbox" 2>/dev/null || true
+              gh issue edit $IDEA_NUM --add-label "status:planned" 2>/dev/null || true
+
+              # Add a comment linking to the Spec
+              gh issue comment $IDEA_NUM --body "Linked to Spec #$ISSUE_NUM - status updated to **planned**." 2>/dev/null || true
+            else
+              echo "Issue #$IDEA_NUM is not an Idea (type: $IDEA_TYPE) - skipping"
+            fi
+          done
+
+      - name: Story started - Update Ideas to in_progress
+        if: steps.context.outputs.issue_type == 'Story' && steps.context.outputs.action == 'labeled' && steps.context.outputs.label == 'status:in-progress'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUM="${{ github.event.issue.number }}"
+          echo "Story #$ISSUE_NUM started (in-progress label added)"
+
+          # Get parent Spec from native GitHub relationship
+          PARENT_SPEC=$(gh issue view $ISSUE_NUM --json parent -q '.parent.number' 2>/dev/null || echo "")
+
+          # Fallback to body parsing for backwards compatibility
+          if [ -z "$PARENT_SPEC" ]; then
+            BODY=$(gh issue view $ISSUE_NUM --json body -q '.body' 2>/dev/null || echo "")
+            PARENT_SPEC=$(echo "$BODY" | grep -oP 'Parent Spec:\s*#\K\d+' || echo "")
+          fi
+
+          if [ -z "$PARENT_SPEC" ]; then
+            echo "No parent Spec found for Story #$ISSUE_NUM"
+            exit 0
+          fi
+
+          echo "Parent Spec: #$PARENT_SPEC"
+
+          # Get Related Backlog Items from the parent Spec
+          SPEC_BODY=$(gh issue view $PARENT_SPEC --json body -q '.body' 2>/dev/null || echo "")
+
+          RELATED_IDEAS=$(echo "$SPEC_BODY" | awk '
+            /^## Related Backlog Items/ { in_section=1; next }
+            /^## / && in_section { exit }
+            in_section && /\| *#[0-9]+ *\|/ {
+              match($0, /#([0-9]+)/, arr)
+              if (arr[1] != "") print arr[1]
+            }
+          ')
+
+          if [ -z "$RELATED_IDEAS" ]; then
+            echo "No Related Backlog Items found in parent Spec"
+            exit 0
+          fi
+
+          echo "Found related Ideas: $RELATED_IDEAS"
+
+          for IDEA_NUM in $RELATED_IDEAS; do
+            # Verify it's actually an Idea type
+            IDEA_TYPE=$(gh issue view $IDEA_NUM --json type -q '.type.name' 2>/dev/null || echo "")
+            if [ "$IDEA_TYPE" = "Idea" ]; then
+              echo "Updating Idea #$IDEA_NUM status to 'in_progress'"
+
+              # Add status:in-progress label (remove other status labels first)
+              gh issue edit $IDEA_NUM --remove-label "status:triaged" 2>/dev/null || true
+              gh issue edit $IDEA_NUM --remove-label "status:planned" 2>/dev/null || true
+              gh issue edit $IDEA_NUM --add-label "status:in-progress" 2>/dev/null || true
+
+              # Add a comment linking to the Story
+              gh issue comment $IDEA_NUM --body "Story #$ISSUE_NUM started - status updated to **in progress**." 2>/dev/null || true
+            fi
+          done
+
+      - name: Story closed - Check if Ideas should be marked done
+        if: steps.context.outputs.issue_type == 'Story' && steps.context.outputs.action == 'closed'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUM="${{ github.event.issue.number }}"
+          echo "Story #$ISSUE_NUM closed - checking if all Stories under parent Spec are done"
+
+          # Get parent Spec from native GitHub relationship
+          PARENT_SPEC=$(gh issue view $ISSUE_NUM --json parent -q '.parent.number' 2>/dev/null || echo "")
+
+          # Fallback to body parsing for backwards compatibility
+          if [ -z "$PARENT_SPEC" ]; then
+            BODY=$(gh issue view $ISSUE_NUM --json body -q '.body' 2>/dev/null || echo "")
+            PARENT_SPEC=$(echo "$BODY" | grep -oP 'Parent Spec:\s*#\K\d+' || echo "")
+          fi
+
+          if [ -z "$PARENT_SPEC" ]; then
+            echo "No parent Spec found for Story #$ISSUE_NUM"
+            exit 0
+          fi
+
+          echo "Parent Spec: #$PARENT_SPEC"
+
+          # Count remaining open Stories under this Spec
+          OPEN_COUNT=$(gh issue list --type Story --state open --json number,parent \
+            -q "[.[] | select(.parent.number == $PARENT_SPEC)] | length" 2>/dev/null || echo "0")
+
+          # Fallback to body parsing for backwards compatibility
+          if [ "$OPEN_COUNT" = "0" ]; then
+            OPEN_COUNT=$(gh issue list --type Story --state open --json body \
+              -q "[.[] | select(.body | test(\"Parent Spec:\\\\s*#$PARENT_SPEC\"; \"i\"))] | length" 2>/dev/null || echo "0")
+          fi
+
+          echo "Open Stories under Spec #$PARENT_SPEC: $OPEN_COUNT"
+
+          if [ "$OPEN_COUNT" != "0" ]; then
+            echo "Spec #$PARENT_SPEC still has $OPEN_COUNT open Stories - not marking Ideas as done yet"
+            exit 0
+          fi
+
+          echo "All Stories complete - updating related Ideas to done"
+
+          # Get Related Backlog Items from the parent Spec
+          SPEC_BODY=$(gh issue view $PARENT_SPEC --json body -q '.body' 2>/dev/null || echo "")
+
+          RELATED_IDEAS=$(echo "$SPEC_BODY" | awk '
+            /^## Related Backlog Items/ { in_section=1; next }
+            /^## / && in_section { exit }
+            in_section && /\| *#[0-9]+ *\|/ {
+              match($0, /#([0-9]+)/, arr)
+              if (arr[1] != "") print arr[1]
+            }
+          ')
+
+          if [ -z "$RELATED_IDEAS" ]; then
+            echo "No Related Backlog Items found in parent Spec"
+            exit 0
+          fi
+
+          echo "Found related Ideas: $RELATED_IDEAS"
+
+          for IDEA_NUM in $RELATED_IDEAS; do
+            # Verify it's actually an Idea type
+            IDEA_TYPE=$(gh issue view $IDEA_NUM --json type -q '.type.name' 2>/dev/null || echo "")
+            if [ "$IDEA_TYPE" = "Idea" ]; then
+              echo "Marking Idea #$IDEA_NUM as done and closing"
+
+              # Add status:done label (remove other status labels first)
+              gh issue edit $IDEA_NUM --remove-label "status:triaged" 2>/dev/null || true
+              gh issue edit $IDEA_NUM --remove-label "status:planned" 2>/dev/null || true
+              gh issue edit $IDEA_NUM --remove-label "status:in-progress" 2>/dev/null || true
+              gh issue edit $IDEA_NUM --add-label "status:done" 2>/dev/null || true
+
+              # Close the Idea with a comment
+              gh issue close $IDEA_NUM --comment "All Stories under Spec #$PARENT_SPEC completed. Auto-closing." 2>/dev/null || true
+            fi
+          done
