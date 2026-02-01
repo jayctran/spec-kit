@@ -145,7 +145,7 @@ def configure_claude_settings(
             "type": "http",
             "url": "https://api.githubcopilot.com/mcp/",
             "headers": {
-                "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+                "Authorization": "Bearer ${GH_TOKEN}"
             },
         }
 
