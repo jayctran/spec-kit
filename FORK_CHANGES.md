@@ -8,8 +8,8 @@ This fork adds **organization template integration** and **Claude Code setup** t
 
 - Fetches GitHub issue templates from `jcttech/.github` during `specify init`
 - Configures claude-mem plugin for memory/context tracking
-- Configures GitHub MCP server (auto-detected from git remote)
-- Provides template-aware issue creation via GitHub MCP
+- Configures GitHub MCP server as fallback (auto-detected from git remote)
+- Uses `gh` CLI as primary method for GitHub operations (MCP as fallback)
 - Uses a wrapper approach to minimize merge conflicts with upstream
 
 ## Fork Structure
@@ -129,7 +129,7 @@ fork:
 After `specify init`, the CLI configures `.claude/settings.json` with:
 
 - **claude-mem plugin**: Enabled for memory/context tracking across sessions
-- **GitHub MCP server**: HTTP-based via GitHub Copilot API (repo context determined at runtime)
+- **GitHub MCP server** (optional fallback): HTTP-based via GitHub Copilot API (repo context determined at runtime)
 
 Generated `.claude/settings.json`:
 ```json
@@ -167,7 +167,16 @@ specify init my-project --ai claude --skip-org-templates --skip-claude-settings
 
 ### Template-Aware Issue Creation
 
-The `/speckit.createissue` command creates GitHub issues using the fetched organization templates with proper field mapping.
+The `/jcttech.createissue` command creates GitHub issues using the fetched organization templates with proper field mapping.
+
+### GitHub Operations
+
+All commands that interact with GitHub (creating issues, updating labels, etc.) follow this priority:
+
+1. **Primary**: Use `gh` CLI (GitHub's official command-line tool)
+2. **Fallback**: Use GitHub MCP if `gh` CLI is unavailable
+
+This ensures commands work even without MCP configuration, as long as the user has `gh` authenticated.
 
 ## Building Fork Releases
 

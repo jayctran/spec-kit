@@ -1,6 +1,6 @@
 ---
 description: Pull Story from GitHub, create worktree, execute tasks, create PR when complete
-tools: ['github/github-mcp-server/issue_read', 'github/github-mcp-server/issue_write']
+# GitHub: Prefer gh CLI; fallback to GitHub MCP if gh unavailable
 scripts:
   sh: scripts/bash/jcttech/worktree-manager.sh --json
   ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly

@@ -1,6 +1,6 @@
 ---
 description: Create a GitHub issue using organization templates with proper field mapping
-tools: ['github/github-mcp-server/issue_write']
+# GitHub: Prefer gh CLI; fallback to GitHub MCP if gh unavailable
 scripts:
   sh: scripts/bash/check-prerequisites.sh --json --paths-only
   ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly
@@ -52,10 +52,15 @@ git config --get remote.origin.url
    - Include all required fields
    - Apply template-defined labels
 
-7. Use GitHub MCP server to create the issue:
+7. Create the issue using the `gh` CLI:
+   ```bash
+   gh issue create --title "[Type] {title}" --type {Type} --label "{labels}" --body "{body}"
+   ```
    - Set title with appropriate prefix (e.g., `[Spec] Feature Name`)
    - Include template-structured body
    - Apply labels from template + any user-specified labels
+
+   > If `gh` CLI is unavailable, fall back to GitHub MCP if configured.
 
 > [!CAUTION]
 > UNDER NO CIRCUMSTANCES EVER CREATE ISSUES IN REPOSITORIES THAT DO NOT MATCH THE REMOTE URL

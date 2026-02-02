@@ -1,6 +1,6 @@
 ---
 description: Create a Bug issue in GitHub (quick creation, prompts for parent)
-tools: ['github/github-mcp-server/issue_write']
+# GitHub: Prefer gh CLI; fallback to GitHub MCP if gh unavailable
 scripts:
   sh: scripts/bash/jcttech/sync-issues.sh --json
   ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly

@@ -1,6 +1,6 @@
 ---
 description: Auto-configure GitHub Project board
-tools: ['github/github-mcp-server/project_write']
+# GitHub: Prefer gh CLI; fallback to GitHub MCP if gh unavailable
 scripts:
   sh: scripts/bash/jcttech/project-setup.sh --json --deploy-workflows
   ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly

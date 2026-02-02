@@ -1,6 +1,6 @@
 ---
 description: Create a new Epic issue in GitHub (top-level initiative)
-tools: ['github/github-mcp-server/issue_write']
+# GitHub: Prefer gh CLI; fallback to GitHub MCP if gh unavailable
 scripts:
   sh: scripts/bash/jcttech/sync-issues.sh --json
   ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly
